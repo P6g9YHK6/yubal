@@ -13,7 +13,16 @@ class SubscriptionCreate(BaseModel):
     """Request to create a subscription."""
 
     url: YouTubeMusicUrl
-    max_items: int | None = Field(default=None, ge=1, le=10000)
+    max_items: int | None = Field(
+        default=None,
+        ge=1,
+        le=10000,
+        description=(
+            "Maximum number of items to sync. For playlists/albums this is "
+            "a track count; for artist/channel URLs it's a limit on the "
+            "number of albums in the discography."
+        ),
+    )
 
 
 class SubscriptionUpdate(BaseModel):

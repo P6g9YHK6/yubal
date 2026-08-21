@@ -118,6 +118,17 @@ class Settings(BaseSettings):
         description="Cron expression for scheduled sync",
     )
 
+    # Auto-add settings
+    auto_add_playlists: bool = Field(
+        default=False, description="Auto-add saved library playlists as subscriptions"
+    )
+    auto_add_artists: bool = Field(
+        default=False, description="Auto-add followed library artists as subscriptions"
+    )
+    auto_add_albums: bool = Field(
+        default=False, description="Auto-add saved library albums as subscriptions"
+    )
+
     # Job execution
     job_timeout_seconds: int = Field(
         default=1800,

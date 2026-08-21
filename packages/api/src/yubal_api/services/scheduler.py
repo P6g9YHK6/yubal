@@ -11,6 +11,7 @@ from yubal_api.api.exceptions import SubscriptionNotFoundError
 from yubal_api.db.subscription import Subscription
 from yubal_api.domain.enums import JobSource
 from yubal_api.services.job_executor import JobExecutor
+from yubal_api.services.library_sync_service import LibrarySyncService
 from yubal_api.services.subscription_service import SubscriptionService
 from yubal_api.settings import Settings
 
@@ -25,11 +26,23 @@ class Scheduler:
         subscription_service: SubscriptionService,
         job_executor: JobExecutor,
         settings: Settings,
+        library_sync_service: LibrarySyncService | None = None,
     ) -> None:
-        """Initialize scheduler."""
+        """Initialize scheduler.
+
+        Args:
+            subscription_service: Service for subscription CRUD.
+            job_executor: Service that creates and runs sync jobs.
+            settings: Application settings (cron schedule, auto-add flags).
+            library_sync_service: Optional service that scans the user's YT
+                Music library and auto-adds new subscriptions before each
+                full sync sweep. None disables the library scan step
+                entirely (e.g. in tests that don't need it).
+        """
         self._subscription_service = subscription_service
         self._job_executor = job_executor
         self._settings = settings
+        self._library_sync_service = library_sync_service
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._next_run_at: datetime | None = None
@@ -142,14 +155,34 @@ class Scheduler:
                 )
         return job_ids
 
+    def _run_library_scan(self) -> None:
+        """Scan the library for new items to auto-add, if configured.
+
+        Runs before the enabled-subscriptions sweep so anything newly
+        auto-added (created with enabled=True) is synced in the same
+        cycle. Never raises — a scan failure shouldn't block the regular
+        sync sweep that follows it.
+        """
+        if self._library_sync_service is None:
+            return
+        try:
+            self._library_sync_service.scan_and_add()
+        except Exception:
+            logger.exception("Library auto-add scan failed")
+
     async def _sync_all_enabled(self) -> list[str]:
         """Sync all enabled subscriptions (async wrapper)."""
+        self._run_library_scan()
         return self._create_jobs_for_subscriptions(
             self._subscription_service.list(enabled=True)
         )
 
     def sync_subscription(self, subscription_id: UUID) -> str | None:
-        """Create sync job for a single subscription. Returns job_id or None."""
+        """Create sync job for a single subscription. Returns job_id or None.
+
+        Deliberately does not run the library scan — resyncing one
+        subscription shouldn't trigger a whole-library scan.
+        """
         try:
             subscription = self._subscription_service.get(subscription_id)
         except SubscriptionNotFoundError:
@@ -160,6 +193,7 @@ class Scheduler:
 
     def sync_all(self) -> list[str]:
         """Create sync jobs for all enabled subscriptions. Returns job_ids."""
+        self._run_library_scan()
         return self._create_jobs_for_subscriptions(
             self._subscription_service.list(enabled=True)
         )

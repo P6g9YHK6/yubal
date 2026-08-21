@@ -23,6 +23,15 @@ class PlaylistMetadata:
 
 
 @dataclass(frozen=True)
+class ArtistMetadata:
+    """Metadata about an artist."""
+
+    name: str
+    thumbnail_url: str | None
+    channel_id: str
+
+
+@dataclass(frozen=True)
 class _Classification:
     """Result of classifying a playlist as album or regular playlist."""
 
@@ -64,6 +73,31 @@ class PlaylistInfoService:
         title = playlist.title or "Unknown Playlist"
         thumbnail_url = playlist.thumbnails[-1].url if playlist.thumbnails else None
         return PlaylistMetadata(title=title, thumbnail_url=thumbnail_url)
+
+    def get_artist_metadata(self, url: str) -> ArtistMetadata:
+        """Get the metadata of an artist from its channel/handle URL.
+
+        Uses a single, cheap get_artist() call (name + thumbnail only) —
+        the full discography is only fetched at sync time, not needed here.
+
+        Args:
+            url: YouTube Music artist channel or handle URL.
+
+        Returns:
+            ArtistMetadata containing name, thumbnail URL, and the
+            resolved channel ID (so callers can canonicalize handle URLs).
+
+        Raises:
+            ChannelParseError: If the URL isn't a channel/handle URL, or a
+                handle URL couldn't be resolved (400/422).
+            ArtistNotFoundError: If the artist doesn't exist (404).
+            UpstreamAPIError: If the API request fails (502).
+        """
+        channel_id = self._client.resolve_channel_id(url)
+        name, thumbnail_url = self._client.get_artist_summary(channel_id)
+        return ArtistMetadata(
+            name=name, thumbnail_url=thumbnail_url, channel_id=channel_id
+        )
 
     def get_content_info(self, url: str) -> ContentInfo:
         """Get content info for any supported YouTube URL.

@@ -17,7 +17,14 @@ from yubal.utils.filename import (
     clean_filename,
     format_playlist_filename,
 )
-from yubal.utils.url import is_single_track_url, parse_playlist_id, parse_video_id
+from yubal.utils.url import (
+    is_artist_url,
+    is_handle_url,
+    is_single_track_url,
+    parse_channel_id,
+    parse_playlist_id,
+    parse_video_id,
+)
 
 __all__ = [
     "build_track_path",
@@ -28,8 +35,11 @@ __all__ = [
     "fetch_cover",
     "format_playlist_filename",
     "get_cover_cache_size",
+    "is_artist_url",
     "is_authenticated_cookies",
+    "is_handle_url",
     "is_single_track_url",
+    "parse_channel_id",
     "parse_playlist_id",
     "parse_video_id",
     "write_playlist_cover",

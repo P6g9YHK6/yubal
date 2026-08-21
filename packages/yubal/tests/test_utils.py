@@ -3,7 +3,10 @@
 import pytest
 from yubal.exceptions import PlaylistParseError
 from yubal.utils import (
+    is_artist_url,
+    is_handle_url,
     is_single_track_url,
+    parse_channel_id,
     parse_playlist_id,
     parse_video_id,
 )
@@ -224,6 +227,10 @@ class TestIsSupportedUrl:
             "https://m.youtube.com/playlist?list=PLtest",
             # Browse URLs
             "https://music.youtube.com/browse/MPREb_test",
+            # Artist/channel URLs
+            "https://youtube.com/channel/abc",
+            "https://music.youtube.com/channel/UC6pSrcsTD4kLFT9SQ2xNx3A",
+            "https://music.youtube.com/@PinkGuy-l1q",
             # youtu.be short URLs
             "https://youtu.be/abc123",
             "http://youtu.be/abc123",
@@ -252,7 +259,6 @@ class TestIsSupportedUrl:
             "https://music.youtube.com/",
             "https://music.youtube.com/watch",
             "https://youtube.com/",
-            "https://youtube.com/channel/abc",
             "https://youtube.com/browse/VLPLxyz",
             "not a url",
         ],
@@ -260,3 +266,82 @@ class TestIsSupportedUrl:
     def test_rejects_unsupported_urls(self, url: str) -> None:
         """Should reject unsupported URL formats."""
         assert is_supported_url(url) is False
+
+
+class TestParseChannelId:
+    """Tests for parse_channel_id function."""
+
+    def test_extracts_from_full_url(self) -> None:
+        """Should extract channel ID from a full channel URL."""
+        url = "https://music.youtube.com/channel/UC6pSrcsTD4kLFT9SQ2xNx3A"
+        assert parse_channel_id(url) == "UC6pSrcsTD4kLFT9SQ2xNx3A"
+
+    def test_extracts_from_youtube_url(self) -> None:
+        """Should extract channel ID from a standard YouTube URL."""
+        assert parse_channel_id("https://youtube.com/channel/abc") == "abc"
+
+    def test_extracts_from_mobile_url(self) -> None:
+        """Should extract channel ID from mobile YouTube URL."""
+        url = "https://m.youtube.com/channel/UCabc123"
+        assert parse_channel_id(url) == "UCabc123"
+
+    def test_returns_none_for_handle_url(self) -> None:
+        """Handle URLs need network resolution, not pure parsing."""
+        assert parse_channel_id("https://music.youtube.com/@PinkGuy-l1q") is None
+
+    def test_returns_none_for_playlist_url(self) -> None:
+        """Should return None for unrelated URL shapes."""
+        url = "https://music.youtube.com/playlist?list=PLtest123"
+        assert parse_channel_id(url) is None
+
+    def test_returns_none_for_empty_url(self) -> None:
+        """Should return None for empty URLs."""
+        assert parse_channel_id("") is None
+
+    def test_returns_none_for_very_long_url(self) -> None:
+        """Should return None for URLs exceeding max length."""
+        url = "https://music.youtube.com/channel/UCabc" + "x" * 2100
+        assert parse_channel_id(url) is None
+
+
+class TestIsHandleUrl:
+    """Tests for is_handle_url function."""
+
+    def test_returns_true_for_handle_url(self) -> None:
+        """Should return True for @handle channel URLs."""
+        assert is_handle_url("https://music.youtube.com/@PinkGuy-l1q") is True
+
+    def test_returns_false_for_channel_id_url(self) -> None:
+        """Should return False for direct /channel/ URLs."""
+        url = "https://music.youtube.com/channel/UC6pSrcsTD4kLFT9SQ2xNx3A"
+        assert is_handle_url(url) is False
+
+    def test_returns_false_for_unrelated_url(self) -> None:
+        """Should return False for non-artist URLs."""
+        assert is_handle_url("https://music.youtube.com/playlist?list=PL") is False
+
+    def test_returns_false_for_empty_url(self) -> None:
+        """Should return False for empty URL."""
+        assert is_handle_url("") is False
+
+
+class TestIsArtistUrl:
+    """Tests for is_artist_url function."""
+
+    def test_returns_true_for_channel_url(self) -> None:
+        """Should return True for /channel/ URLs."""
+        url = "https://music.youtube.com/channel/UC6pSrcsTD4kLFT9SQ2xNx3A"
+        assert is_artist_url(url) is True
+
+    def test_returns_true_for_handle_url(self) -> None:
+        """Should return True for @handle URLs."""
+        assert is_artist_url("https://music.youtube.com/@PinkGuy-l1q") is True
+
+    def test_returns_false_for_playlist_url(self) -> None:
+        """Should return False for playlist URLs."""
+        url = "https://music.youtube.com/playlist?list=PLtest123"
+        assert is_artist_url(url) is False
+
+    def test_returns_false_for_empty_url(self) -> None:
+        """Should return False for empty URL."""
+        assert is_artist_url("") is False

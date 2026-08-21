@@ -6,6 +6,7 @@ Handles playlists, albums, and single tracks.
 """
 
 import logging
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -22,10 +23,13 @@ from yubal import (
     PlaylistProgress,
     TrackMetadata,
     create_playlist_downloader,
+    is_artist_url,
 )
-from yubal.models.enums import ContentKind
+from yubal.client import YTMusicClient
+from yubal.models.enums import ContentKind, SkipReason
 from yubal.models.results import get_audio_bitrate
 from yubal.models.track import PlaylistInfo
+from yubal.models.ytmusic import ArtistDiscography
 from yubal.services.playlist_download_service import PlaylistDownloadService
 
 from yubal_api.domain.enums import ProgressStep
@@ -305,7 +309,8 @@ class SyncService:
         Returns:
             SyncResult with operation outcome and metadata.
         """
-        workflow = _SyncWorkflow(
+        workflow_cls = _ArtistSyncWorkflow if is_artist_url(url) else _SyncWorkflow
+        workflow = workflow_cls(
             url=url,
             on_progress=on_progress,
             cancel_token=cancel_token,
@@ -331,9 +336,11 @@ class SyncService:
 
 
 @dataclass
-class _SyncWorkflow:
-    """Internal workflow state and execution logic.
+class _WorkflowBase:
+    """Shared config, downloader construction, and error handling.
 
+    Subclassed by `_SyncWorkflow` (single playlist/album/track URL) and
+    `_ArtistSyncWorkflow` (artist URL, fans out over the discography).
     Separated from the service class to keep state management isolated
     and make the execution flow clearer.
     """
@@ -354,11 +361,8 @@ class _SyncWorkflow:
     cache_path: Path | None
     audio_quality: int
 
-    # Workflow state
+    # Workflow state shared by both subclasses
     content_info: ContentInfo | None = field(default=None, init=False)
-    playlist_info: PlaylistInfo | None = field(default=None, init=False)
-    tracks: list[TrackMetadata] = field(default_factory=list, init=False)
-    previous_phase: str | None = field(default=None, init=False)
 
     def execute(self) -> SyncResult:
         """Run the complete sync workflow."""
@@ -381,19 +385,16 @@ class _SyncWorkflow:
             )
 
     def _run_download_workflow(self) -> SyncResult:
-        """Execute the download workflow phases."""
-        downloader = self._create_downloader()
+        """Execute the download workflow. Implemented by subclasses."""
+        raise NotImplementedError
 
-        self._emit(ProgressStep.FETCHING_INFO, "Starting...", 0.0)
+    def _build_download_config(self, max_items: int | None) -> PlaylistDownloadConfig:
+        """Build the shared PlaylistDownloadConfig for a download run.
 
-        for progress in downloader.download_playlist(self.url, self.cancel_token):
-            self._handle_progress(progress)
-
-        return self._build_result(downloader)
-
-    def _create_downloader(self) -> PlaylistDownloadService:
-        """Create configured content downloader instance."""
-        config = PlaylistDownloadConfig(
+        Factored out so both workflows configure downloads identically;
+        only `max_items` varies per call (see subclass usage).
+        """
+        return PlaylistDownloadConfig(
             download=DownloadConfig(
                 base_path=self.base_path,
                 codec=self.codec,
@@ -406,11 +407,76 @@ class _SyncWorkflow:
             ),
             generate_m3u=True,
             save_cover=True,
-            max_items=self.max_items,
+            max_items=max_items,
             apply_replaygain=self.apply_replaygain,
             cache_path=self.cache_path,
         )
+
+    def _create_downloader(
+        self,
+        max_items: int | None,
+        *,
+        client: YTMusicClient | None = None,
+    ) -> PlaylistDownloadService:
+        """Create a configured content downloader instance.
+
+        Args:
+            max_items: Maximum tracks to download for this run.
+            client: Optional pre-built YTMusicClient to reuse (e.g. so the
+                artist workflow shares one client/album-cache across every
+                album in the discography instead of creating one per album).
+        """
+        config = self._build_download_config(max_items)
+        if client is not None:
+            return PlaylistDownloadService(
+                config, client=client, cookies_path=self.cookies_path
+            )
         return create_playlist_downloader(config, cookies_path=self.cookies_path)
+
+    def _determine_destination(self, result: Any) -> str | None:
+        """Extract output directory from download results."""
+        # Prefer M3U path's parent if generated
+        if result.m3u_path:
+            return str(result.m3u_path.parent)
+
+        # Fall back to first download result's directory
+        for dl_result in result.download_results:
+            if dl_result.output_path:
+                return str(dl_result.output_path.parent)
+
+        return None
+
+    def _emit(
+        self,
+        step: ProgressStep,
+        message: str,
+        percent: float | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        """Send progress update via callback if registered."""
+        if self.on_progress:
+            self.on_progress(step, message, percent, details)
+
+
+@dataclass
+class _SyncWorkflow(_WorkflowBase):
+    """Workflow for a single playlist, album, or track URL."""
+
+    # Workflow state
+    playlist_info: PlaylistInfo | None = field(default=None, init=False)
+    tracks: list[TrackMetadata] = field(default_factory=list, init=False)
+    previous_phase: str | None = field(default=None, init=False)
+
+    def _run_download_workflow(self) -> SyncResult:
+        """Execute the download workflow phases."""
+        downloader = self._create_downloader(self.max_items)
+
+        self._emit(ProgressStep.FETCHING_INFO, "Starting...", 0.0)
+
+        for progress in downloader.download_playlist(self.url, self.cancel_token):
+            self._handle_progress(progress)
+
+        return self._build_result(downloader)
 
     def _handle_progress(self, progress: PlaylistProgress) -> None:
         """Route progress update to appropriate phase handler."""
@@ -574,26 +640,211 @@ class _SyncWorkflow:
             destination=destination,
         )
 
-    def _determine_destination(self, result: Any) -> str | None:
-        """Extract output directory from download results."""
-        # Prefer M3U path's parent if generated
-        if result.m3u_path:
-            return str(result.m3u_path.parent)
 
-        # Fall back to first download result's directory
-        for dl_result in result.download_results:
-            if dl_result.output_path:
-                return str(dl_result.output_path.parent)
+# -----------------------------------------------------------------------------
+# Artist Workflow Implementation
+# -----------------------------------------------------------------------------
 
-        return None
 
-    def _emit(
+def build_artist_content_info(
+    discography: ArtistDiscography,
+    channel_id: str,
+    url: str,
+    audio_format: str,
+) -> ContentInfo:
+    """Build a rollup ContentInfo for an artist's discography.
+
+    Reuses ContentKind.ALBUM for the `kind` field — a discography is a
+    collection of albums, and this app has no dedicated "artist" content
+    kind (that would ripple into the extractor, composer, and ReplayGain
+    logic, none of which have meaning for a multi-album rollup).
+    """
+    return ContentInfo(
+        title=discography.name,
+        artist=discography.name,
+        year=None,  # Spans many years, not meaningful for a rollup
+        track_count=None,  # Updated as albums complete
+        playlist_id=channel_id,
+        url=url,
+        thumbnail_url=discography.thumbnail_url,
+        audio_codec=audio_format.upper(),
+        audio_bitrate=None,
+        kind=ContentKind.ALBUM,
+    )
+
+
+def _merge_phase_stats(stats_list: list[PhaseStats]) -> PhaseStats:
+    """Sum a list of per-album PhaseStats into one aggregate."""
+    skipped_by_reason: dict[SkipReason, int] = {}
+    for stats in stats_list:
+        for reason, count in stats.skipped_by_reason.items():
+            skipped_by_reason[reason] = skipped_by_reason.get(reason, 0) + count
+    return PhaseStats(
+        success=sum(s.success for s in stats_list),
+        failed=sum(s.failed for s in stats_list),
+        skipped_by_reason=skipped_by_reason,
+    )
+
+
+@dataclass
+class _ArtistSyncWorkflow(_WorkflowBase):
+    """Workflow for an artist/channel URL.
+
+    Resolves the artist's full discography, then downloads each album
+    through the exact same per-album pipeline a manually-added album
+    subscription would use (an artist's albums each have an
+    `audioPlaylistId`, so they're fed back in as ordinary album playlist
+    URLs — no changes needed to the core extraction/download pipeline).
+
+    `max_items` means "maximum number of albums" here, unlike every other
+    subscription type where it means "maximum number of tracks".
+    """
+
+    # Workflow state
+    discography: ArtistDiscography | None = field(default=None, init=False)
+
+    def _run_download_workflow(self) -> SyncResult:
+        client = YTMusicClient(cookies_path=self.cookies_path)
+
+        self._emit(ProgressStep.FETCHING_INFO, "Resolving artist...", 0.0)
+        channel_id = client.resolve_channel_id(self.url)
+        self.discography = client.get_artist_albums(channel_id)
+
+        self.content_info = build_artist_content_info(
+            self.discography, channel_id, self.url, self.audio_format
+        )
+        self._emit(
+            ProgressStep.FETCHING_INFO,
+            f"Found artist: {self.discography.name} "
+            f"({len(self.discography.album_browse_ids)} releases)",
+            1.0,
+            {"content_info": self.content_info.model_dump()},
+        )
+
+        album_browse_ids = self.discography.album_browse_ids
+        if self.max_items is not None:
+            album_browse_ids = album_browse_ids[: self.max_items]
+
+        if not album_browse_ids:
+            return SyncResult(
+                success=False,
+                content_info=self.content_info,
+                error="No albums found for artist",
+            )
+
+        return self._download_discography(client, album_browse_ids)
+
+    def _download_discography(
+        self, client: YTMusicClient, album_browse_ids: list[str]
+    ) -> SyncResult:
+        total_albums = len(album_browse_ids)
+        stats_list: list[PhaseStats] = []
+        destinations: list[str] = []
+        total_tracks = 0
+
+        for index, album_browse_id in enumerate(album_browse_ids):
+            try:
+                album = client.get_album(album_browse_id)
+            except Exception as e:
+                logger.warning("Skipping unfetchable album %s: %s", album_browse_id, e)
+                continue
+
+            if not album.audio_playlist_id:
+                logger.warning(
+                    "Album %s (%s) has no playlist ID, skipping",
+                    album_browse_id,
+                    album.title,
+                )
+                continue
+
+            album_url = (
+                f"https://music.youtube.com/playlist?list={album.audio_playlist_id}"
+            )
+            downloader = self._create_downloader(None, client=client)
+
+            for progress in downloader.download_playlist(album_url, self.cancel_token):
+                self._handle_album_progress(progress, index, total_albums, album.title)
+
+            result = downloader.get_result()
+            if result is None:
+                continue
+
+            stats_list.append(result.download_stats)
+            total_tracks += len(result.download_results)
+            destination = self._determine_destination(result)
+            if destination:
+                destinations.append(destination)
+
+        self._finalize_content_info(total_tracks)
+
+        assert self.discography is not None  # set in _run_download_workflow
+        self._emit(
+            ProgressStep.COMPLETED,
+            f"Sync complete: {self.discography.name} ({total_albums} albums)",
+            100.0,
+        )
+
+        return SyncResult(
+            success=True,
+            content_info=self.content_info,
+            download_stats=_merge_phase_stats(stats_list),
+            destination=self._combine_destinations(destinations),
+        )
+
+    def _handle_album_progress(
         self,
-        step: ProgressStep,
-        message: str,
-        percent: float | None = None,
-        details: dict[str, Any] | None = None,
+        progress: PlaylistProgress,
+        album_index: int,
+        total_albums: int,
+        album_title: str,
     ) -> None:
-        """Send progress update via callback if registered."""
-        if self.on_progress:
-            self.on_progress(step, message, percent, details)
+        """Rescale one album's local progress into overall job progress."""
+        if progress.phase not in PHASE_TO_STEP:
+            return
+
+        step = _phase_to_step(progress.phase)
+        local_percent = _compute_progress(
+            progress.phase, progress.current, progress.total
+        )
+        overall_percent = (album_index + local_percent / 100) / total_albums * 100
+
+        if progress.phase == "extracting":
+            inner_message = _format_extraction_message(progress)
+        elif progress.phase == "downloading":
+            inner_message = _format_download_message(progress)
+            self._update_bitrate_if_available(progress)
+        else:
+            inner_message = progress.message or "Generating playlist files..."
+
+        message = f"[{album_index + 1}/{total_albums}] {album_title}: {inner_message}"
+        self._emit(step, message, overall_percent)
+
+    def _update_bitrate_if_available(self, progress: PlaylistProgress) -> None:
+        """Set audio_bitrate from the first successful download, artist-wide."""
+        if not progress.download_progress:
+            return
+        if self.content_info is None or self.content_info.audio_bitrate is not None:
+            return
+
+        result = progress.download_progress.result
+        if result.status == DownloadStatus.SUCCESS:
+            bitrate = get_audio_bitrate(result.output_path)
+            if bitrate:
+                self.content_info.audio_bitrate = bitrate
+
+    def _finalize_content_info(self, total_tracks: int) -> None:
+        """Update the rollup content_info with the final track count."""
+        if self.content_info is not None:
+            self.content_info.track_count = total_tracks
+
+    def _combine_destinations(self, destinations: list[str]) -> str | None:
+        """Pick a single representative destination across all albums."""
+        if not destinations:
+            return None
+        if len(destinations) == 1:
+            return destinations[0]
+        try:
+            return os.path.commonpath(destinations)
+        except ValueError:
+            # No common path (e.g. different drives) — fall back to base_path
+            return str(self.base_path)

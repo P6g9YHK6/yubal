@@ -259,3 +259,40 @@ class TestLyricsSettings:
         monkeypatch.setenv("YUBAL_YTMUSIC_LYRICS_FALLBACK", "false")
         settings = Settings()
         assert settings.ytmusic_lyrics_fallback is False
+
+
+class TestAutoAddSettings:
+    """Tests for auto-add library scan settings."""
+
+    def test_auto_add_playlists_default_false(self) -> None:
+        assert _create_settings().auto_add_playlists is False
+
+    def test_auto_add_artists_default_false(self) -> None:
+        assert _create_settings().auto_add_artists is False
+
+    def test_auto_add_albums_default_false(self) -> None:
+        assert _create_settings().auto_add_albums is False
+
+    def test_auto_add_playlists_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
+        monkeypatch.setenv("YUBAL_AUTO_ADD_PLAYLISTS", "true")
+        settings = Settings()
+        assert settings.auto_add_playlists is True
+
+    def test_auto_add_artists_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
+        monkeypatch.setenv("YUBAL_AUTO_ADD_ARTISTS", "true")
+        settings = Settings()
+        assert settings.auto_add_artists is True
+
+    def test_auto_add_albums_env_override(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
+        monkeypatch.setenv("YUBAL_AUTO_ADD_ALBUMS", "true")
+        settings = Settings()
+        assert settings.auto_add_albums is True

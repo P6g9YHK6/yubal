@@ -18,8 +18,9 @@ def validate_youtube_music_url(url: str) -> str:
     if not is_supported_url(url):
         raise ValueError(
             "Invalid URL. Expected a YouTube or YouTube Music URL "
-            "(e.g., https://youtube.com/watch?v=... or "
-            "https://music.youtube.com/playlist?list=...)"
+            "(e.g., https://youtube.com/watch?v=..., "
+            "https://music.youtube.com/playlist?list=..., or "
+            "https://music.youtube.com/channel/... or @handle for artists)"
         )
     return url
 
@@ -35,17 +36,25 @@ class CreateJobRequest(BaseModel):
     """Request to create a new sync job."""
 
     url: YouTubeMusicUrl = Field(
-        description="YouTube or YouTube Music playlist, album, or single track URL",
+        description=(
+            "YouTube or YouTube Music playlist, album, artist/channel, "
+            "or single track URL"
+        ),
         examples=[
             "https://music.youtube.com/playlist?list=OLAK5uy_...",
             "https://www.youtube.com/watch?v=VIDEO_ID",
+            "https://music.youtube.com/channel/UC...",
         ],
     )
     max_items: int | None = Field(
         default=None,
         ge=1,
         le=10000,
-        description="Maximum number of tracks to download",
+        description=(
+            "Maximum number of items to download. For playlists/albums this "
+            "is a track count; for artist/channel URLs it's a limit on the "
+            "number of albums."
+        ),
     )
 
 
