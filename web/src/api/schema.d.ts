@@ -391,10 +391,10 @@ export interface components {
         };
         /**
          * ContentKind
-         * @description Type of music content (album vs playlist vs track).
+         * @description Type of music content (album vs playlist vs track vs artist).
          * @enum {string}
          */
-        ContentKind: "album" | "playlist" | "track";
+        ContentKind: "album" | "playlist" | "track" | "artist";
         /**
          * CookiesStatusResponse
          * @description Cookies status response model.
@@ -876,7 +876,7 @@ export interface components {
          * @description Type of content subscription.
          * @enum {string}
          */
-        SubscriptionType: "playlist";
+        SubscriptionType: "playlist" | "artist";
         /**
          * SubscriptionUpdate
          * @description Request to update a subscription.

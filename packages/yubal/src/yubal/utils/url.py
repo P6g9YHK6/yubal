@@ -11,6 +11,10 @@ VIDEO_ID_PATTERN = re.compile(r"v=([A-Za-z0-9_-]+)")
 # Path-based video ID patterns (youtu.be, shorts, live, embed)
 _PATH_VIDEO_ID_PATTERN = re.compile(r"^/(?:shorts|live|embed|e|v|vi)/([A-Za-z0-9_-]+)")
 
+# Channel ID and handle path patterns (artist/channel pages)
+_CHANNEL_ID_PATH_PATTERN = re.compile(r"^/channel/([A-Za-z0-9_-]+)")
+_HANDLE_PATH_PATTERN = re.compile(r"^/@([A-Za-z0-9_.-]+)")
+
 # Recognized YouTube hostnames for path-based video ID extraction
 _YOUTUBE_HOSTS = {
     "youtube.com",
@@ -19,6 +23,15 @@ _YOUTUBE_HOSTS = {
     "music.youtube.com",
     "youtube-nocookie.com",
     "www.youtube-nocookie.com",
+}
+
+# Hostnames that serve channel/artist pages (no dedicated -nocookie embeds
+# for channels, so this is a narrower set than _YOUTUBE_HOSTS)
+_CHANNEL_HOSTS = {
+    "youtube.com",
+    "www.youtube.com",
+    "m.youtube.com",
+    "music.youtube.com",
 }
 
 # Maximum URL length to prevent potential abuse (standard browser limit)
@@ -100,6 +113,67 @@ def parse_video_id(url: str) -> str | None:
     return _parse_video_id_from_path(url)
 
 
+def parse_channel_id(url: str) -> str | None:
+    """Extract a channel ID from a YouTube Music artist/channel URL.
+
+    Only handles the direct `/channel/UC...` form, which requires no
+    network access. Handle URLs (`/@name`) cannot be resolved here since
+    resolving them requires a network lookup — use
+    `YTMusicClient.resolve_channel_id()` for those.
+
+    Args:
+        url: YouTube or YouTube Music URL.
+
+    Returns:
+        The channel ID string, or None if the URL isn't a `/channel/` URL.
+    """
+    if not url or len(url) > MAX_URL_LENGTH:
+        return None
+
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    path = parsed.path or ""
+
+    if host not in _CHANNEL_HOSTS:
+        return None
+    if match := _CHANNEL_ID_PATH_PATTERN.match(path):
+        return match.group(1)
+    return None
+
+
+def is_handle_url(url: str) -> bool:
+    """Check if URL is a YouTube Music handle URL (e.g. `/@name`).
+
+    Args:
+        url: YouTube or YouTube Music URL.
+
+    Returns:
+        True if the URL is a handle-shaped channel URL, False otherwise.
+    """
+    if not url or len(url) > MAX_URL_LENGTH:
+        return False
+
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    path = parsed.path or ""
+
+    if host not in _CHANNEL_HOSTS:
+        return False
+    return bool(_HANDLE_PATH_PATTERN.match(path))
+
+
+def is_artist_url(url: str) -> bool:
+    """Check if URL points to an artist/channel page (either form).
+
+    Args:
+        url: YouTube or YouTube Music URL.
+
+    Returns:
+        True if the URL is a `/channel/UC...` or `/@handle` URL.
+    """
+    return parse_channel_id(url) is not None or is_handle_url(url)
+
+
 def is_single_track_url(url: str) -> bool:
     """Check if URL is a single track (not a playlist).
 
@@ -140,5 +214,8 @@ def is_supported_url(url: str) -> bool:
     host = parsed.hostname or ""
     path = parsed.path or ""
     if "/browse/" in path and host == "music.youtube.com":
+        return True
+    # Artist/channel URL (channel ID or handle)
+    if is_artist_url(url):
         return True
     return False

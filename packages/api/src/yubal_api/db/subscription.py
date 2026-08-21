@@ -12,7 +12,7 @@ class SubscriptionType(StrEnum):
     """Type of content subscription."""
 
     PLAYLIST = "playlist"
-    # ARTIST = "artist"  # future
+    ARTIST = "artist"
 
 
 class SubscriptionFields(TypedDict, total=False):

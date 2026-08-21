@@ -1,13 +1,15 @@
 """Tests for YTMusicClient."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from ytmusicapi.auth.types import AuthType
 from ytmusicapi.exceptions import YTMusicServerError
 from yubal.client import YTMusicClient
 from yubal.exceptions import (
+    ArtistNotFoundError,
     AuthenticationRequiredError,
+    ChannelParseError,
     TrackNotFoundError,
     UpstreamAPIError,
 )
@@ -386,3 +388,180 @@ class TestGetLyrics:
         client = YTMusicClient(ytmusic=mock_ytm)
         assert client.get_lyrics("") is None
         mock_ytm.get_lyrics.assert_not_called()
+
+
+# ============================================================================
+# Artist / Channel Tests
+# ============================================================================
+
+
+@pytest.fixture
+def sample_artist_data() -> dict:
+    """Create sample get_artist() API response data."""
+    return {
+        "name": "Oasis",
+        "thumbnails": [
+            {"url": "https://example.com/artist.jpg", "width": 544, "height": 544}
+        ],
+        "albums": {
+            "results": [
+                {"title": "Familiar To Millions", "browseId": "MPREb_album1"},
+            ],
+            "browseId": "UCmMUZbaYdNH0bEd1PAlAqsA",
+            "params": "albums_params",
+        },
+        "singles": {
+            "results": [
+                {"title": "Stand By Me", "browseId": "MPREb_single1"},
+            ],
+            "browseId": "UCmMUZbaYdNH0bEd1PAlAqsA",
+            "params": "singles_params",
+        },
+    }
+
+
+class TestResolveChannelId:
+    """Tests for YTMusicClient.resolve_channel_id."""
+
+    def test_returns_id_directly_for_channel_url(self) -> None:
+        mock_ytm = MagicMock()
+        client = YTMusicClient(ytmusic=mock_ytm)
+        url = "https://music.youtube.com/channel/UC6pSrcsTD4kLFT9SQ2xNx3A"
+        assert client.resolve_channel_id(url) == "UC6pSrcsTD4kLFT9SQ2xNx3A"
+
+    def test_resolves_handle_via_yt_dlp(self) -> None:
+        mock_ytm = MagicMock()
+        client = YTMusicClient(ytmusic=mock_ytm)
+
+        with patch("yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = mock_ydl.return_value.__enter__.return_value
+            mock_instance.extract_info.return_value = {"channel_id": "UCresolved"}
+
+            channel_id = client.resolve_channel_id(
+                "https://music.youtube.com/@PinkGuy-l1q"
+            )
+
+        assert channel_id == "UCresolved"
+
+    def test_raises_for_unresolvable_handle(self) -> None:
+        mock_ytm = MagicMock()
+        client = YTMusicClient(ytmusic=mock_ytm)
+
+        with patch("yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = mock_ydl.return_value.__enter__.return_value
+            mock_instance.extract_info.return_value = {}
+
+            with pytest.raises(ChannelParseError):
+                client.resolve_channel_id("https://music.youtube.com/@unknown")
+
+    def test_wraps_yt_dlp_errors(self) -> None:
+        mock_ytm = MagicMock()
+        client = YTMusicClient(ytmusic=mock_ytm)
+
+        with patch("yt_dlp.YoutubeDL") as mock_ydl:
+            mock_instance = mock_ydl.return_value.__enter__.return_value
+            mock_instance.extract_info.side_effect = Exception("network error")
+
+            with pytest.raises(UpstreamAPIError):
+                client.resolve_channel_id("https://music.youtube.com/@unknown")
+
+    def test_raises_for_non_channel_url(self) -> None:
+        mock_ytm = MagicMock()
+        client = YTMusicClient(ytmusic=mock_ytm)
+
+        with pytest.raises(ChannelParseError):
+            client.resolve_channel_id("https://music.youtube.com/playlist?list=PL")
+
+
+class TestGetArtistSummary:
+    """Tests for YTMusicClient.get_artist_summary."""
+
+    def test_returns_name_and_thumbnail(
+        self, mock_ytmusic: MagicMock, sample_artist_data: dict
+    ) -> None:
+        mock_ytmusic.get_artist.return_value = sample_artist_data
+        client = YTMusicClient(ytmusic=mock_ytmusic)
+
+        name, thumbnail_url = client.get_artist_summary("UC123")
+
+        assert name == "Oasis"
+        assert thumbnail_url == "https://example.com/artist.jpg"
+        mock_ytmusic.get_artist_albums.assert_not_called()
+
+    def test_raises_for_missing_artist(self, mock_ytmusic: MagicMock) -> None:
+        mock_ytmusic.get_artist.return_value = {}
+        client = YTMusicClient(ytmusic=mock_ytmusic)
+
+        with pytest.raises(ArtistNotFoundError):
+            client.get_artist_summary("UC123")
+
+    def test_wraps_api_error(self, mock_ytmusic: MagicMock) -> None:
+        mock_ytmusic.get_artist.side_effect = YTMusicServerError("boom")
+        client = YTMusicClient(ytmusic=mock_ytmusic)
+
+        with pytest.raises(UpstreamAPIError):
+            client.get_artist_summary("UC123")
+
+
+class TestGetArtistAlbums:
+    """Tests for YTMusicClient.get_artist_albums."""
+
+    def test_paginates_albums_and_singles(
+        self, mock_ytmusic: MagicMock, sample_artist_data: dict
+    ) -> None:
+        mock_ytmusic.get_artist.return_value = sample_artist_data
+
+        def fake_get_artist_albums(
+            channelId: str, params: str, limit: int | None = None, order: object = None
+        ) -> list[dict]:
+            if params == "albums_params":
+                return [{"browseId": "MPREb_album1"}, {"browseId": "MPREb_album2"}]
+            return [{"browseId": "MPREb_single1"}]
+
+        mock_ytmusic.get_artist_albums.side_effect = fake_get_artist_albums
+        client = YTMusicClient(ytmusic=mock_ytmusic)
+
+        discography = client.get_artist_albums("UC123")
+
+        assert discography.name == "Oasis"
+        assert discography.thumbnail_url == "https://example.com/artist.jpg"
+        assert discography.album_browse_ids == [
+            "MPREb_album1",
+            "MPREb_album2",
+            "MPREb_single1",
+        ]
+
+    def test_falls_back_to_inline_results_without_params(
+        self, mock_ytmusic: MagicMock
+    ) -> None:
+        mock_ytmusic.get_artist.return_value = {
+            "name": "Small Artist",
+            "thumbnails": [],
+            "albums": {"results": [{"title": "Only Album", "browseId": "MPREb_x"}]},
+        }
+        client = YTMusicClient(ytmusic=mock_ytmusic)
+
+        discography = client.get_artist_albums("UC123")
+
+        assert discography.album_browse_ids == ["MPREb_x"]
+        mock_ytmusic.get_artist_albums.assert_not_called()
+
+    def test_dedupes_browse_ids_across_sections(self, mock_ytmusic: MagicMock) -> None:
+        mock_ytmusic.get_artist.return_value = {
+            "name": "Artist",
+            "thumbnails": [],
+            "albums": {"results": [{"title": "A", "browseId": "MPREb_dup"}]},
+            "singles": {"results": [{"title": "A dup", "browseId": "MPREb_dup"}]},
+        }
+        client = YTMusicClient(ytmusic=mock_ytmusic)
+
+        discography = client.get_artist_albums("UC123")
+
+        assert discography.album_browse_ids == ["MPREb_dup"]
+
+    def test_raises_for_missing_artist(self, mock_ytmusic: MagicMock) -> None:
+        mock_ytmusic.get_artist.return_value = None
+        client = YTMusicClient(ytmusic=mock_ytmusic)
+
+        with pytest.raises(ArtistNotFoundError):
+            client.get_artist_albums("UC123")

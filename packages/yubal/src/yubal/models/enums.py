@@ -69,8 +69,16 @@ class MatchResult(StrEnum):
 
 
 class ContentKind(StrEnum):
-    """Type of music content (album vs playlist vs track)."""
+    """Type of music content (album vs playlist vs track vs artist).
+
+    ARTIST only ever appears on the API-facing ContentInfo/Job models, as
+    the rollup kind for an artist subscription's whole discography. The
+    core extraction/download pipeline (PlaylistInfo.kind) never produces
+    it — an artist sync fans out into ordinary per-album downloads, each
+    classified as ALBUM/PLAYLIST/TRACK like any other content.
+    """
 
     ALBUM = "album"
     PLAYLIST = "playlist"
     TRACK = "track"
+    ARTIST = "artist"

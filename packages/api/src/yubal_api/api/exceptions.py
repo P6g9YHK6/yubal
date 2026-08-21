@@ -136,7 +136,9 @@ class CookieValidationError(APIError):
 def register_exception_handlers(app: FastAPI) -> None:
     """Register custom exception handlers on the FastAPI app."""
     from yubal import (
+        ArtistNotFoundError,
         AuthenticationRequiredError,
+        ChannelParseError,
         PlaylistNotFoundError,
         PlaylistParseError,
         TrackNotFoundError,
@@ -148,8 +150,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     _CORE_EXCEPTION_MAP: dict[type[Exception], tuple[int, str]] = {
         PlaylistNotFoundError: (404, "playlist_not_found"),
         TrackNotFoundError: (404, "track_not_found"),
+        ArtistNotFoundError: (404, "artist_not_found"),
         AuthenticationRequiredError: (401, "authentication_required"),
         PlaylistParseError: (422, "playlist_parse_error"),
+        ChannelParseError: (422, "channel_parse_error"),
         UnsupportedPlaylistError: (422, "unsupported_playlist"),
         UpstreamAPIError: (502, "upstream_api_error"),
     }

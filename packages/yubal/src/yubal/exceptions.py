@@ -16,6 +16,14 @@ class PlaylistParseError(YubalError):
     """
 
 
+class ChannelParseError(YubalError):
+    """Failed to parse or resolve a channel/artist URL.
+
+    Raised when the provided URL doesn't contain a valid channel ID and
+    a handle (@name) URL couldn't be resolved to one either.
+    """
+
+
 class TrackParseError(YubalError):
     """Failed to parse track URL.
 
@@ -28,6 +36,14 @@ class PlaylistNotFoundError(YubalError):
     """Playlist not found or inaccessible.
 
     Raised when the playlist doesn't exist or is private.
+    """
+
+
+class ArtistNotFoundError(YubalError):
+    """Artist not found or inaccessible.
+
+    Raised when the artist channel doesn't exist or has no browsable
+    discography data.
     """
 
 

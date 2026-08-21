@@ -6,13 +6,16 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+import yt_dlp
 from ytmusicapi import YTMusic
 from ytmusicapi.auth.types import AuthType
 from ytmusicapi.exceptions import YTMusicError, YTMusicServerError, YTMusicUserError
 
 from yubal.config import APIConfig
 from yubal.exceptions import (
+    ArtistNotFoundError,
     AuthenticationRequiredError,
+    ChannelParseError,
     PlaylistNotFoundError,
     TrackNotFoundError,
     UnsupportedPlaylistError,
@@ -20,8 +23,21 @@ from yubal.exceptions import (
     YubalError,
 )
 from yubal.models.enums import SkipReason
-from yubal.models.ytmusic import Album, Playlist, PlaylistTrack, SearchResult
+from yubal.models.ytmusic import (
+    Album,
+    ArtistDiscography,
+    Playlist,
+    PlaylistTrack,
+    SearchResult,
+)
 from yubal.utils.cookies import cookies_to_ytmusic_auth
+from yubal.utils.url import is_handle_url, parse_channel_id
+
+# Content sections from get_artist() that are album-shaped (browseId+params
+# pagination via get_artist_albums()). "songs", "videos", "shows",
+# "episodes", "podcasts", and "related" are intentionally excluded — they
+# aren't discography items this downloader can turn into album playlists.
+_DISCOGRAPHY_SECTIONS = ("albums", "singles")
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +64,18 @@ class YTMusicProtocol(Protocol):
 
     def get_album(self, album_id: str) -> Album:
         """Fetch an album by ID."""
+        ...
+
+    def resolve_channel_id(self, url: str) -> str:
+        """Resolve a channel ID from a `/channel/` or `/@handle` URL."""
+        ...
+
+    def get_artist_summary(self, channel_id: str) -> tuple[str, str | None]:
+        """Fetch an artist's name and thumbnail only (no discography)."""
+        ...
+
+    def get_artist_albums(self, channel_id: str) -> ArtistDiscography:
+        """Fetch an artist's full discography (albums + singles) by channel ID."""
         ...
 
     def search_songs(self, query: str) -> list[SearchResult]:
@@ -296,6 +324,159 @@ class YTMusicClient:
             self._album_cache.popitem(last=False)
 
         return album
+
+    def resolve_channel_id(self, url: str) -> str:
+        """Resolve a channel ID from an artist/channel URL.
+
+        Handles both URL forms:
+        - `/channel/UC...`: the ID is already in the URL, no network needed.
+        - `/@handle`: resolved via a lightweight yt-dlp flat extraction,
+          since ytmusicapi has no handle-to-channel-ID resolver.
+
+        Args:
+            url: YouTube Music artist/channel URL.
+
+        Returns:
+            The resolved channel ID.
+
+        Raises:
+            ChannelParseError: If the URL isn't a channel/handle URL, or if
+                a handle URL couldn't be resolved to a channel ID.
+            UpstreamAPIError: If the yt-dlp resolution request fails.
+        """
+        if channel_id := parse_channel_id(url):
+            return channel_id
+
+        if not is_handle_url(url):
+            raise ChannelParseError(f"Not a channel or handle URL: {url}")
+
+        logger.debug("Resolving handle URL via yt-dlp: %s", url)
+        try:
+            with yt_dlp.YoutubeDL(
+                {"quiet": True, "no_warnings": True, "extract_flat": True}
+            ) as ydl:
+                info = ydl.extract_info(url, download=False)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception as e:
+            logger.warning("yt-dlp failed to resolve handle %s: %s", url, e)
+            raise UpstreamAPIError(f"Failed to resolve channel handle: {e}") from e
+
+        channel_id = (info or {}).get("channel_id")
+        if not channel_id:
+            raise ChannelParseError(f"Could not resolve handle to a channel ID: {url}")
+        return channel_id
+
+    def get_artist_summary(self, channel_id: str) -> tuple[str, str | None]:
+        """Fetch an artist's name and thumbnail only (no discography).
+
+        Cheap, single-request alternative to get_artist_albums() for
+        callers that only need display metadata (e.g. subscription
+        creation), where fetching the full paginated discography would be
+        wasted work.
+
+        Args:
+            channel_id: YouTube Music artist channel ID.
+
+        Returns:
+            Tuple of (name, thumbnail_url).
+
+        Raises:
+            ArtistNotFoundError: If the artist doesn't exist or has no data.
+            UpstreamAPIError: If the API request fails.
+        """
+        data = self._fetch_artist_page(channel_id)
+        thumbnails = data.get("thumbnails") or []
+        thumbnail_url = thumbnails[-1]["url"] if thumbnails else None
+        return data["name"], thumbnail_url
+
+    def get_artist_albums(self, channel_id: str) -> ArtistDiscography:
+        """Fetch an artist's full discography (albums + singles).
+
+        Follows the `browseId`/`params` pagination pointers returned by
+        `get_artist()` to fetch the complete album/single list, not just
+        the short preview list embedded in the artist page response.
+
+        Args:
+            channel_id: YouTube Music artist channel ID.
+
+        Returns:
+            ArtistDiscography with the artist's name, thumbnail, and the
+            deduplicated list of album browse IDs (each fetchable via
+            get_album()).
+
+        Raises:
+            ArtistNotFoundError: If the artist doesn't exist or has no data.
+            UpstreamAPIError: If the API request fails.
+        """
+        data = self._fetch_artist_page(channel_id)
+        thumbnails = data.get("thumbnails") or []
+        thumbnail_url = thumbnails[-1]["url"] if thumbnails else None
+
+        browse_ids: list[str] = []
+        seen: set[str] = set()
+        for section_key in _DISCOGRAPHY_SECTIONS:
+            section = data.get(section_key)
+            if not section:
+                continue
+            for browse_id in self._collect_section_browse_ids(section):
+                if browse_id not in seen:
+                    seen.add(browse_id)
+                    browse_ids.append(browse_id)
+
+        return ArtistDiscography(
+            name=data["name"],
+            thumbnail_url=thumbnail_url,
+            album_browse_ids=browse_ids,
+        )
+
+    def _fetch_artist_page(self, channel_id: str) -> dict[str, Any]:
+        """Fetch and validate the raw get_artist() response.
+
+        Raises:
+            ArtistNotFoundError: If the artist doesn't exist or has no data.
+            UpstreamAPIError: If the API request fails.
+        """
+        logger.debug("Fetching artist: %s", channel_id)
+        try:
+            data = self._ytm.get_artist(channel_id)
+        except (YTMusicServerError, YTMusicUserError) as e:
+            logger.warning("YTMusic API error for artist %s: %s", channel_id, e)
+            raise UpstreamAPIError(f"Failed to fetch artist: {e}") from e
+        except YTMusicError as e:
+            logger.warning("YTMusic error for artist %s: %s", channel_id, e)
+            raise UpstreamAPIError(f"Failed to fetch artist: {e}") from e
+
+        if not data or not data.get("name"):
+            raise ArtistNotFoundError(f"Artist not found: {channel_id}")
+        return data
+
+    def _collect_section_browse_ids(self, section: dict[str, Any]) -> list[str]:
+        """Get all album browse IDs for one discography section.
+
+        Follows the section's `browseId`/`params` pagination pointers for
+        the full list; falls back to the inline `results` preview if the
+        section has no pagination (small artists with few releases).
+        """
+        params = section.get("params")
+        section_browse_id = section.get("browseId")
+
+        if params and section_browse_id:
+            try:
+                items = self._ytm.get_artist_albums(
+                    channelId=section_browse_id, params=params, limit=None
+                )
+            except (YTMusicServerError, YTMusicUserError, YTMusicError) as e:
+                logger.warning("YTMusic error paginating discography: %s", e)
+                items = section.get("results") or []
+        else:
+            items = section.get("results") or []
+
+        return [
+            browse_id
+            for item in items
+            if isinstance(item, Mapping) and (browse_id := item.get("browseId"))
+        ]
 
     def search_songs(self, query: str) -> list[SearchResult]:
         """Search for songs.

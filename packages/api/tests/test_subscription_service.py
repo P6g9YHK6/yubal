@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from yubal import PlaylistNotFoundError, UpstreamAPIError
+from yubal import ArtistNotFoundError, PlaylistNotFoundError, UpstreamAPIError
 from yubal_api.api.exceptions import (
     MetadataFetchError,
     SubscriptionConflictError,
@@ -13,6 +13,7 @@ from yubal_api.api.exceptions import (
 )
 from yubal_api.db.subscription import Subscription, SubscriptionType
 from yubal_api.services.playlist_info_service import (
+    ArtistMetadata,
     PlaylistInfoService,
     PlaylistMetadata,
 )
@@ -170,6 +171,88 @@ class TestCreate:
         )
 
         assert result.max_items == 5
+
+    def test_create_artist_success(
+        self,
+        service: SubscriptionService,
+        mock_repo: MagicMock,
+        mock_playlist_info: MagicMock,
+    ) -> None:
+        mock_repo.get_by_url.return_value = None
+        mock_playlist_info.get_artist_metadata.return_value = ArtistMetadata(
+            name="Oasis",
+            thumbnail_url="https://example.com/artist.jpg",
+            channel_id="UC6pSrcsTD4kLFT9SQ2xNx3A",
+        )
+        mock_repo.create.side_effect = lambda sub: sub
+
+        result = service.create("https://music.youtube.com/@Oasis")
+
+        assert result.type == SubscriptionType.ARTIST
+        assert result.name == "Oasis"
+        # Canonicalized to the resolved /channel/ form, not the raw handle
+        assert (
+            result.url == "https://music.youtube.com/channel/UC6pSrcsTD4kLFT9SQ2xNx3A"
+        )
+        mock_playlist_info.get_artist_metadata.assert_called_once()
+        mock_repo.get_by_url.assert_called_once_with(result.url)
+
+    def test_create_artist_from_channel_url(
+        self,
+        service: SubscriptionService,
+        mock_repo: MagicMock,
+        mock_playlist_info: MagicMock,
+    ) -> None:
+        mock_repo.get_by_url.return_value = None
+        mock_playlist_info.get_artist_metadata.return_value = ArtistMetadata(
+            name="Oasis", thumbnail_url=None, channel_id="UC6pSrcsTD4kLFT9SQ2xNx3A"
+        )
+        mock_repo.create.side_effect = lambda sub: sub
+
+        result = service.create(
+            "https://music.youtube.com/channel/UC6pSrcsTD4kLFT9SQ2xNx3A"
+        )
+
+        assert result.type == SubscriptionType.ARTIST
+
+    def test_create_artist_conflict(
+        self,
+        service: SubscriptionService,
+        mock_repo: MagicMock,
+        mock_playlist_info: MagicMock,
+        sample_subscription: Subscription,
+    ) -> None:
+        mock_playlist_info.get_artist_metadata.return_value = ArtistMetadata(
+            name="Oasis", thumbnail_url=None, channel_id="UC6pSrcsTD4kLFT9SQ2xNx3A"
+        )
+        mock_repo.get_by_url.return_value = sample_subscription
+
+        with pytest.raises(SubscriptionConflictError) as exc_info:
+            service.create("https://music.youtube.com/@Oasis")
+        assert exc_info.value.subscription_id == sample_subscription.id
+
+    def test_create_artist_known_exception_propagates(
+        self,
+        service: SubscriptionService,
+        mock_playlist_info: MagicMock,
+    ) -> None:
+        mock_playlist_info.get_artist_metadata.side_effect = ArtistNotFoundError(
+            "not found"
+        )
+
+        with pytest.raises(ArtistNotFoundError):
+            service.create("https://music.youtube.com/@unknown")
+
+    def test_create_artist_unexpected_error_wraps_in_metadata_fetch_error(
+        self,
+        service: SubscriptionService,
+        mock_playlist_info: MagicMock,
+    ) -> None:
+        mock_playlist_info.get_artist_metadata.side_effect = RuntimeError("boom")
+
+        with pytest.raises(MetadataFetchError) as exc_info:
+            service.create("https://music.youtube.com/@Oasis")
+        assert exc_info.value.upstream_error == "RuntimeError"
 
 
 class TestUpdate:

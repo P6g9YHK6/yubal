@@ -34,8 +34,10 @@ from pathlib import Path
 from yubal.client import YTMusicClient as _YTMusicClient
 from yubal.config import APIConfig, AudioCodec, DownloadConfig, PlaylistDownloadConfig
 from yubal.exceptions import (
+    ArtistNotFoundError,
     AuthenticationRequiredError,
     CancellationError,
+    ChannelParseError,
     DownloadError,
     PlaylistNotFoundError,
     PlaylistParseError,
@@ -63,7 +65,13 @@ from yubal.models.track import PlaylistInfo, TrackMetadata
 from yubal.services import MetadataExtractorService, PlaylistDownloadService
 from yubal.services.download_service import DownloadService as _DownloadService
 from yubal.utils import cleanup_part_files, clear_cover_cache, fetch_cover
-from yubal.utils.url import is_single_track_url, is_supported_url, parse_playlist_id
+from yubal.utils.url import (
+    is_artist_url,
+    is_single_track_url,
+    is_supported_url,
+    parse_channel_id,
+    parse_playlist_id,
+)
 
 
 def create_extractor(
@@ -195,10 +203,12 @@ def create_playlist_downloader(
 
 __all__ = [
     "APIConfig",
+    "ArtistNotFoundError",
     "AudioCodec",
     "AuthenticationRequiredError",
     "CancelToken",
     "CancellationError",
+    "ChannelParseError",
     "ContentKind",
     "DownloadConfig",
     "DownloadError",
@@ -230,7 +240,9 @@ __all__ = [
     "create_extractor",
     "create_playlist_downloader",
     "fetch_cover",
+    "is_artist_url",
     "is_single_track_url",
     "is_supported_url",
+    "parse_channel_id",
     "parse_playlist_id",
 ]

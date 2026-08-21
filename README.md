@@ -63,8 +63,8 @@ When downloading a playlist, each track lives in its album folder; the M3U file 
 ## ✨ Features
 
 - **Web UI** — Real-time progress, job queue, works on mobile
-- **Albums, playlists & tracks** — Paste any YouTube Music link, get organized files
-- **Scheduled sync** — Subscribe to playlists; new tracks appear in your library automatically
+- **Albums, playlists, artists & tracks** — Paste any YouTube Music link (including artist/channel pages), get organized files
+- **Scheduled sync** — Subscribe to playlists, albums, or artists; new tracks appear in your library automatically
 - **Smart deduplication** — Same track across 10 playlists? Stored once, referenced everywhere
 - **Reliable downloads** — Automatic retry on failures, graceful cancellation
 - **Automatic lyrics** — Synced `.lrc` files for karaoke-style playback in supported players
@@ -219,6 +219,7 @@ Need age-restricted content, private playlists, your **Liked Music** (`list=LM`)
 - [ ] Flat folder mode
 - [ ] Post-download webhooks
 - [ ] New music automatic discovery
+- [x] Artist/channel subscriptions
 - [x] Browser extension ([v0.7.0](https://github.com/guillevc/yubal/releases/tag/v0.7.0))
 - [x] UGC tracks — remixes, unofficial content ([v0.5.0](https://github.com/guillevc/yubal/releases/tag/v0.5.0))
 - [x] Auto-sync playlists ([v0.4.0](https://github.com/guillevc/yubal/releases/tag/v0.4.0))

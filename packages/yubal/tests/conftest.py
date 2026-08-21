@@ -15,6 +15,7 @@ from yubal.models.ytmusic import (
     AlbumRef,
     AlbumTrack,
     Artist,
+    ArtistDiscography,
     Playlist,
     PlaylistTrack,
     SearchResult,
@@ -305,6 +306,22 @@ class MockYTMusicClient:
     def get_lyrics(self, browse_id: str) -> Mapping[str, object] | None:
         """Mock get_lyrics - returns None (no lyrics)."""
         return None
+
+    def resolve_channel_id(self, url: str) -> str:
+        """Mock resolve_channel_id - not implemented for playlist tests."""
+        raise NotImplementedError(
+            "MockYTMusicClient doesn't support resolve_channel_id"
+        )
+
+    def get_artist_summary(self, channel_id: str) -> tuple[str, str | None]:
+        """Mock get_artist_summary - not implemented for playlist tests."""
+        raise NotImplementedError(
+            "MockYTMusicClient doesn't support get_artist_summary"
+        )
+
+    def get_artist_albums(self, channel_id: str) -> ArtistDiscography:
+        """Mock get_artist_albums - not implemented for playlist tests."""
+        raise NotImplementedError("MockYTMusicClient doesn't support get_artist_albums")
 
 
 @pytest.fixture

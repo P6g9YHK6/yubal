@@ -142,7 +142,7 @@ function ContentInfo({
   audioCodec: string | null;
   audioBitrate: number | null;
   showBitrate: boolean;
-  kind: "playlist" | "album" | "track" | null;
+  kind: "playlist" | "album" | "track" | "artist" | null;
   source: "manual" | "scheduler";
   createdAt: string | undefined;
 }) {

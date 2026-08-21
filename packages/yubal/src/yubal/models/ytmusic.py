@@ -13,6 +13,7 @@ __all__ = [
     "AlbumRef",
     "AlbumTrack",
     "Artist",
+    "ArtistDiscography",
     "Playlist",
     "PlaylistTrack",
     "SearchResult",
@@ -96,6 +97,21 @@ class Album(YTMusicModel):
     year: str | None = None
     thumbnails: list[Thumbnail]
     tracks: list[AlbumTrack]
+    audio_playlist_id: str | None = Field(default=None, alias="audioPlaylistId")
+
+
+class ArtistDiscography(YTMusicModel):
+    """An artist's full discography, assembled from get_artist()/get_artist_albums().
+
+    Unlike other models in this module, this isn't validated directly from a
+    single raw API response — it's built by YTMusicClient.get_artist_albums()
+    from one or more combined ytmusicapi calls (the artist page plus any
+    paginated album/single sections).
+    """
+
+    name: str
+    thumbnail_url: str | None = None
+    album_browse_ids: list[str] = Field(default_factory=list)
 
 
 class SearchResult(YTMusicModel):
