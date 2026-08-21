@@ -65,6 +65,7 @@ When downloading a playlist, each track lives in its album folder; the M3U file 
 - **Web UI** — Real-time progress, job queue, works on mobile
 - **Albums, playlists, artists & tracks** — Paste any YouTube Music link (including artist/channel pages), get organized files
 - **Scheduled sync** — Subscribe to playlists, albums, or artists; new tracks appear in your library automatically
+- **Auto-add from your library** — Optionally scan your saved playlists, albums, and followed artists each sync cycle and subscribe automatically
 - **Smart deduplication** — Same track across 10 playlists? Stored once, referenced everywhere
 - **Reliable downloads** — Automatic retry on failures, graceful cancellation
 - **Automatic lyrics** — Synced `.lrc` files for karaoke-style playback in supported players
@@ -152,6 +153,11 @@ docker compose up -d
 | `YUBAL_ASCII_FILENAMES` | Transliterate unicode to ASCII      | `false`          |
 | `YUBAL_CORS_ORIGINS`    | Allowed CORS origins                | `["*"]`          |
 | `YUBAL_TEMP`            | Temp directory                      | System temp      |
+| `YUBAL_AUTO_ADD_PLAYLISTS` | Auto-add saved library playlists as subscriptions | `false` |
+| `YUBAL_AUTO_ADD_ARTISTS`   | Auto-add followed library artists as subscriptions | `false` |
+| `YUBAL_AUTO_ADD_ALBUMS`    | Auto-add saved library albums as subscriptions | `false` |
+
+Auto-add requires authenticated [cookies](#-cookies-optional) — it scans your YouTube Music library on each sync cycle.
 
 </details>
 
@@ -218,7 +224,7 @@ Need age-restricted content, private playlists, your **Liked Music** (`list=LM`)
 
 - [ ] Flat folder mode
 - [ ] Post-download webhooks
-- [ ] New music automatic discovery
+- [x] New music automatic discovery
 - [x] Artist/channel subscriptions
 - [x] Browser extension ([v0.7.0](https://github.com/guillevc/yubal/releases/tag/v0.7.0))
 - [x] UGC tracks — remixes, unofficial content ([v0.5.0](https://github.com/guillevc/yubal/releases/tag/v0.5.0))

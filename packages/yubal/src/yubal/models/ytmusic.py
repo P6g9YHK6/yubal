@@ -14,6 +14,9 @@ __all__ = [
     "AlbumTrack",
     "Artist",
     "ArtistDiscography",
+    "LibraryAlbum",
+    "LibraryArtist",
+    "LibraryPlaylist",
     "Playlist",
     "PlaylistTrack",
     "SearchResult",
@@ -112,6 +115,28 @@ class ArtistDiscography(YTMusicModel):
     name: str
     thumbnail_url: str | None = None
     album_browse_ids: list[str] = Field(default_factory=list)
+
+
+class LibraryPlaylist(YTMusicModel):
+    """A playlist from get_library_playlists()."""
+
+    playlist_id: str = Field(alias="playlistId")
+    title: str
+
+
+class LibraryAlbum(YTMusicModel):
+    """An album from get_library_albums()."""
+
+    browse_id: str = Field(alias="browseId")
+    playlist_id: str | None = Field(default=None, alias="playlistId")
+    title: str
+
+
+class LibraryArtist(YTMusicModel):
+    """An artist from get_library_subscriptions() (artists the user follows)."""
+
+    browse_id: str = Field(alias="browseId")
+    name: str = Field(alias="artist")
 
 
 class SearchResult(YTMusicModel):

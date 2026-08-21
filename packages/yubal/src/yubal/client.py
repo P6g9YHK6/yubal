@@ -26,6 +26,9 @@ from yubal.models.enums import SkipReason
 from yubal.models.ytmusic import (
     Album,
     ArtistDiscography,
+    LibraryAlbum,
+    LibraryArtist,
+    LibraryPlaylist,
     Playlist,
     PlaylistTrack,
     SearchResult,
@@ -43,6 +46,11 @@ logger = logging.getLogger(__name__)
 
 # Maximum number of albums to cache per client instance
 _ALBUM_CACHE_SIZE = 128
+
+# get_library_albums()/get_library_subscriptions() only type-accept an int
+# limit (unlike get_library_playlists(), which accepts None for "all"), so
+# a large-but-finite cap stands in for "no limit" for library scans.
+_LIBRARY_FETCH_LIMIT = 1000
 
 # Special playlist ID for the user's "Liked Music" pseudo-playlist on
 # YouTube Music. Requires authentication and has no real title in the API
@@ -76,6 +84,18 @@ class YTMusicProtocol(Protocol):
 
     def get_artist_albums(self, channel_id: str) -> ArtistDiscography:
         """Fetch an artist's full discography (albums + singles) by channel ID."""
+        ...
+
+    def get_library_playlists(self) -> list[LibraryPlaylist]:
+        """Fetch the user's saved/library playlists (requires authentication)."""
+        ...
+
+    def get_library_albums(self) -> list[LibraryAlbum]:
+        """Fetch the user's saved library albums (requires authentication)."""
+        ...
+
+    def get_library_followed_artists(self) -> list[LibraryArtist]:
+        """Fetch artists the user follows/is subscribed to (requires auth)."""
         ...
 
     def search_songs(self, query: str) -> list[SearchResult]:
@@ -477,6 +497,65 @@ class YTMusicClient:
             for item in items
             if isinstance(item, Mapping) and (browse_id := item.get("browseId"))
         ]
+
+    def get_library_playlists(self) -> list[LibraryPlaylist]:
+        """Fetch the user's saved/library playlists.
+
+        Requires authentication (cookies) — the underlying ytmusicapi call
+        raises if the client isn't logged in.
+
+        Returns:
+            List of the user's library playlists.
+
+        Raises:
+            UpstreamAPIError: If the API request fails.
+        """
+        try:
+            data = self._ytm.get_library_playlists(limit=None)
+        except (YTMusicServerError, YTMusicUserError, YTMusicError) as e:
+            logger.warning("YTMusic error fetching library playlists: %s", e)
+            raise UpstreamAPIError(f"Failed to fetch library playlists: {e}") from e
+        return [LibraryPlaylist.model_validate(item) for item in data or []]
+
+    def get_library_albums(self) -> list[LibraryAlbum]:
+        """Fetch the user's saved library albums.
+
+        Requires authentication (cookies).
+
+        Returns:
+            List of the user's library albums.
+
+        Raises:
+            UpstreamAPIError: If the API request fails.
+        """
+        try:
+            data = self._ytm.get_library_albums(limit=_LIBRARY_FETCH_LIMIT)
+        except (YTMusicServerError, YTMusicUserError, YTMusicError) as e:
+            logger.warning("YTMusic error fetching library albums: %s", e)
+            raise UpstreamAPIError(f"Failed to fetch library albums: {e}") from e
+        return [LibraryAlbum.model_validate(item) for item in data or []]
+
+    def get_library_followed_artists(self) -> list[LibraryArtist]:
+        """Fetch artists the user follows/is subscribed to.
+
+        Uses ytmusicapi's get_library_subscriptions(), not
+        get_library_artists() — the latter returns artists of songs already
+        in the library, not artists the user has actually followed.
+
+        Requires authentication (cookies).
+
+        Returns:
+            List of followed artists.
+
+        Raises:
+            UpstreamAPIError: If the API request fails.
+        """
+        try:
+            data = self._ytm.get_library_subscriptions(limit=_LIBRARY_FETCH_LIMIT)
+        except (YTMusicServerError, YTMusicUserError, YTMusicError) as e:
+            logger.warning("YTMusic error fetching followed artists: %s", e)
+            raise UpstreamAPIError(f"Failed to fetch followed artists: {e}") from e
+        return [LibraryArtist.model_validate(item) for item in data or []]
 
     def search_songs(self, query: str) -> list[SearchResult]:
         """Search for songs.

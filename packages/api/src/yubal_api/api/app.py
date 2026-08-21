@@ -27,6 +27,7 @@ from starlette.responses import HTMLResponse, Response
 from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 from yubal import cleanup_part_files
+from yubal.client import YTMusicClient
 
 from yubal_api.api.container import Services
 from yubal_api.api.exceptions import register_exception_handlers
@@ -51,6 +52,7 @@ from yubal_api.schemas.logs import LogEntry
 from yubal_api.services.job_event_bus import JobEventBus
 from yubal_api.services.job_executor import JobExecutor
 from yubal_api.services.job_store import JobStore
+from yubal_api.services.library_sync_service import LibrarySyncService
 from yubal_api.services.log_buffer import BufferHandler, LogBuffer
 from yubal_api.services.playlist_info_service import PlaylistInfoService
 from yubal_api.services.scheduler import Scheduler
@@ -177,11 +179,20 @@ def create_services(repository: SubscriptionRepository) -> Services:
         job_timeout=settings.job_timeout_seconds,
     )
 
+    # Create library auto-add scan service (used by the scheduler only)
+    library_sync_service = LibrarySyncService(
+        client=YTMusicClient(cookies_path=cookies_path),
+        subscription_service=subscription_service,
+        settings=settings,
+        cookies_path=cookies_path,
+    )
+
     # Create scheduler
     scheduler_service = Scheduler(
         subscription_service=subscription_service,
         job_executor=job_executor,
         settings=settings,
+        library_sync_service=library_sync_service,
     )
 
     # Wire up coordinator with executor
