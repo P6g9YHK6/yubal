@@ -34,6 +34,7 @@ from yubal.models.ytmusic import (
     SearchResult,
 )
 from yubal.utils.cookies import cookies_to_ytmusic_auth
+from yubal.utils.throttle import ThrottledSession
 from yubal.utils.url import is_handle_url, parse_channel_id
 
 # Content sections from get_artist() that are album-shaped (browseId+params
@@ -161,12 +162,12 @@ class YTMusicClient:
             auth = cookies_to_ytmusic_auth(cookies_path)
             if auth:
                 logger.info("Using cookies for ytmusicapi requests")
-                return YTMusic(auth=auth)
+                return YTMusic(auth=auth, requests_session=ThrottledSession())
             logger.info("No valid cookies for ytmusicapi requests (missing SAPISID)")
-            return YTMusic()
+            return YTMusic(requests_session=ThrottledSession())
 
         logger.info("No cookies configured for ytmusicapi requests")
-        return YTMusic()
+        return YTMusic(requests_session=ThrottledSession())
 
     def get_playlist(self, playlist_id: str) -> Playlist:
         """Fetch a playlist by ID.

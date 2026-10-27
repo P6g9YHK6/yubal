@@ -94,6 +94,20 @@ class Settings(BaseSettings):
         description="Download user-generated content tracks to _Unofficial",
     )
 
+    # Rate limiting settings
+    sleep_interval: float = Field(
+        default=20, ge=0, description="Minimum seconds to wait before each download"
+    )
+    max_sleep_interval: float = Field(
+        default=60, ge=0, description="Maximum seconds to wait before each download"
+    )
+    sleep_requests: float = Field(
+        default=3, ge=0, description="Seconds to wait between extraction requests"
+    )
+    api_request_interval: float = Field(
+        default=3, ge=0, description="Minimum seconds between YouTube Music API calls"
+    )
+
     # ReplayGain settings
     replaygain: bool = Field(
         default=True,

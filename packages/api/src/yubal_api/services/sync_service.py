@@ -281,6 +281,9 @@ class SyncService:
     download_ugc: bool = False
     cache_path: Path | None = None
     audio_quality: int = 0
+    sleep_interval: float = 0
+    max_sleep_interval: float = 0
+    sleep_requests: float = 0
     _codec: AudioCodec = field(init=False)
 
     def __post_init__(self) -> None:
@@ -326,6 +329,9 @@ class SyncService:
             download_ugc=self.download_ugc,
             cache_path=self.cache_path,
             audio_quality=self.audio_quality,
+            sleep_interval=self.sleep_interval,
+            max_sleep_interval=self.max_sleep_interval,
+            sleep_requests=self.sleep_requests,
         )
         return workflow.execute()
 
@@ -360,6 +366,9 @@ class _WorkflowBase:
     download_ugc: bool
     cache_path: Path | None
     audio_quality: int
+    sleep_interval: float
+    max_sleep_interval: float
+    sleep_requests: float
 
     # Workflow state shared by both subclasses
     content_info: ContentInfo | None = field(default=None, init=False)
@@ -404,6 +413,9 @@ class _WorkflowBase:
                 ytmusic_lyrics_fallback=self.ytmusic_lyrics_fallback,
                 ascii_filenames=self.ascii_filenames,
                 download_ugc=self.download_ugc,
+                sleep_interval=self.sleep_interval,
+                max_sleep_interval=self.max_sleep_interval,
+                sleep_requests=self.sleep_requests,
             ),
             generate_m3u=True,
             save_cover=True,

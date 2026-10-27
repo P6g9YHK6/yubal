@@ -28,6 +28,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.types import Scope
 from yubal import cleanup_part_files
 from yubal.client import YTMusicClient
+from yubal.utils import set_request_interval
 
 from yubal_api.api.container import Services
 from yubal_api.api.exceptions import register_exception_handlers
@@ -155,6 +156,9 @@ def create_services(repository: SubscriptionRepository) -> Services:
         event_bus=job_event_bus,
     )
 
+    # Pace every YouTube Music API call made by this process
+    set_request_interval(settings.api_request_interval)
+
     # Create subscription service
     cookies_path = settings.cookies_file if settings.cookies_file.exists() else None
     playlist_info = PlaylistInfoService(cookies_path=cookies_path)
@@ -174,6 +178,9 @@ def create_services(repository: SubscriptionRepository) -> Services:
         apply_replaygain=settings.replaygain,
         ascii_filenames=settings.ascii_filenames,
         download_ugc=settings.download_ugc,
+        sleep_interval=settings.sleep_interval,
+        max_sleep_interval=settings.max_sleep_interval,
+        sleep_requests=settings.sleep_requests,
         subscription_service=subscription_service,
         cache_path=settings.cache_path,
         job_timeout=settings.job_timeout_seconds,

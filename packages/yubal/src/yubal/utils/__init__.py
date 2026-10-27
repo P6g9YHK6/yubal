@@ -17,6 +17,7 @@ from yubal.utils.filename import (
     clean_filename,
     format_playlist_filename,
 )
+from yubal.utils.throttle import set_request_interval
 from yubal.utils.url import (
     is_artist_url,
     is_handle_url,
@@ -42,5 +43,6 @@ __all__ = [
     "parse_channel_id",
     "parse_playlist_id",
     "parse_video_id",
+    "set_request_interval",
     "write_playlist_cover",
 ]

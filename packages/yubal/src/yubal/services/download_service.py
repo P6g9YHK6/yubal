@@ -145,6 +145,13 @@ class YTDLPDownloader:
                 "http": lambda n: min(2**n, 30),  # Cap at 30s
                 "fragment": lambda n: min(2**n, 30),
             },
+            # Pacing between tracks and requests so long syncs don't trip YouTube's
+            # rate limiting, which ends in a temporary IP ban
+            "sleep_interval": self._config.sleep_interval,
+            "max_sleep_interval": max(
+                self._config.sleep_interval, self._config.max_sleep_interval
+            ),
+            "sleep_interval_requests": self._config.sleep_requests,
             # Fetch the EJS challenge solver. See issue #29 https://github.com/guillevc/yubal/issues/29
             "remote_components": ["ejs:github"],
         }

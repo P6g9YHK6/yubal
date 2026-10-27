@@ -39,6 +39,9 @@ class DownloadConfig:
         ytmusic_lyrics_fallback: When fetch_lyrics is enabled, fall back to
             YouTube Music's lyrics if lrclib.net has no match.
         ascii_filenames: Transliterate unicode to ASCII in filenames.
+        sleep_interval: Minimum seconds yt-dlp waits before each download.
+        max_sleep_interval: Upper bound of the random wait before each download.
+        sleep_requests: Seconds yt-dlp waits between extraction requests.
     """
 
     base_path: Path
@@ -49,6 +52,9 @@ class DownloadConfig:
     ytmusic_lyrics_fallback: bool = True
     ascii_filenames: bool = False
     download_ugc: bool = False
+    sleep_interval: float = 0
+    max_sleep_interval: float = 0
+    sleep_requests: float = 0
 
 
 @dataclass(frozen=True)

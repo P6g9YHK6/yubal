@@ -53,6 +53,9 @@ class JobExecutor:
         apply_replaygain: bool = False,
         ascii_filenames: bool = False,
         download_ugc: bool = False,
+        sleep_interval: float = 0,
+        max_sleep_interval: float = 0,
+        sleep_requests: float = 0,
         subscription_service: SubscriptionService | None = None,
         cache_path: Path | None = None,
         job_timeout: float = 1800,
@@ -71,6 +74,9 @@ class JobExecutor:
             apply_replaygain: Whether to apply ReplayGain tags using rsgain.
             ascii_filenames: Whether to transliterate unicode to ASCII in filenames.
             download_ugc: Whether to download UGC tracks to _Unofficial folder.
+            sleep_interval: Minimum seconds to wait before each download.
+            max_sleep_interval: Maximum seconds to wait before each download.
+            sleep_requests: Seconds to wait between extraction requests.
             subscription_service: Optional service to update subscription metadata.
             cache_path: Optional directory for extraction cache.
             job_timeout: Maximum execution time per job in seconds.
@@ -85,6 +91,9 @@ class JobExecutor:
         self._apply_replaygain = apply_replaygain
         self._ascii_filenames = ascii_filenames
         self._download_ugc = download_ugc
+        self._sleep_interval = sleep_interval
+        self._max_sleep_interval = max_sleep_interval
+        self._sleep_requests = sleep_requests
         self._subscription_service = subscription_service
         self._cache_path = cache_path
         self._job_timeout = job_timeout
@@ -242,6 +251,9 @@ class JobExecutor:
                     self._download_ugc,
                     self._cache_path,
                     self._audio_quality,
+                    self._sleep_interval,
+                    self._max_sleep_interval,
+                    self._sleep_requests,
                 )
                 result = await asyncio.to_thread(
                     sync_service.run,
