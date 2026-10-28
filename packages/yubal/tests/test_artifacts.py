@@ -202,6 +202,28 @@ class TestPlaylistArtifactsService:
         assert m3u_path is not None
         mock_m3u.assert_called_once()
 
+    @patch("yubal.services.artifacts.write_m3u")
+    @patch("yubal.services.artifacts.write_playlist_cover")
+    def test_compose_skips_m3u_for_playlist_when_configured(
+        self,
+        mock_cover: MagicMock,
+        mock_m3u: MagicMock,
+        composer: PlaylistArtifactsService,
+        playlist_info: PlaylistInfo,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should skip M3U for regular playlists when skip_playlist_m3u=True."""
+        mock_cover.return_value = tmp_path / "_Playlists" / "Test Playlist.jpg"
+
+        m3u_path, cover_path = composer.compose(
+            tmp_path, playlist_info, download_results, skip_playlist_m3u=True
+        )
+
+        assert m3u_path is None
+        assert cover_path is not None
+        mock_m3u.assert_not_called()
+
     def test_collect_tracks_filters_successful(
         self,
         composer: PlaylistArtifactsService,

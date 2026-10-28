@@ -68,6 +68,7 @@ class PlaylistDownloadConfig:
         generate_m3u: Whether to generate M3U playlist file.
         save_cover: Whether to save playlist cover image.
         skip_album_m3u: Skip M3U generation for album playlists.
+        skip_playlist_m3u: Skip M3U generation for regular playlists.
         max_items: Maximum number of tracks to download.
         apply_replaygain: Whether to apply ReplayGain tags using rsgain.
         cache_path: Directory for extraction cache. None disables caching.
@@ -77,6 +78,7 @@ class PlaylistDownloadConfig:
     generate_m3u: bool = True
     save_cover: bool = True
     skip_album_m3u: bool = True
+    skip_playlist_m3u: bool = False
     max_items: int | None = None
     apply_replaygain: bool = True
     cache_path: Path | None = None

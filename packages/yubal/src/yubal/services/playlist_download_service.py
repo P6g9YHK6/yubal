@@ -474,8 +474,11 @@ class PlaylistDownloadService:
         # Determine what we're actually generating
         is_album = playlist_info.kind == ContentKind.ALBUM
         is_track = playlist_info.kind == ContentKind.TRACK
+        is_playlist = playlist_info.kind == ContentKind.PLAYLIST
         will_generate_m3u = self._config.generate_m3u and not (
-            is_track or (self._config.skip_album_m3u and is_album)
+            is_track
+            or (self._config.skip_album_m3u and is_album)
+            or (self._config.skip_playlist_m3u and is_playlist)
         )
         will_save_cover = self._config.save_cover and not is_track
 
@@ -511,6 +514,7 @@ class PlaylistDownloadService:
             generate_m3u=self._config.generate_m3u,
             save_cover=self._config.save_cover,
             skip_album_m3u=self._config.skip_album_m3u,
+            skip_playlist_m3u=self._config.skip_playlist_m3u,
         )
 
         yield (

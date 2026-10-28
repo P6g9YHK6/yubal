@@ -108,6 +108,17 @@ class Settings(BaseSettings):
         default=3, ge=0, description="Minimum seconds between YouTube Music API calls"
     )
 
+    # M3U settings
+    playlist_m3u: bool = Field(
+        default=True, description="Write an M3U file for each synced playlist"
+    )
+    album_m3u: bool = Field(
+        default=True, description="Write an M3U file for each synced album"
+    )
+    artist_m3u: bool = Field(
+        default=True, description="Write one M3U per artist covering the discography"
+    )
+
     # ReplayGain settings
     replaygain: bool = Field(
         default=True,

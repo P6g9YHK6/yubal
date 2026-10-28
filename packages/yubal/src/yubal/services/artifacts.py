@@ -38,6 +38,7 @@ class PlaylistArtifactsProtocol(Protocol):
         generate_m3u: bool = True,
         save_cover: bool = True,
         skip_album_m3u: bool = True,
+        skip_playlist_m3u: bool = False,
     ) -> ArtifactPaths:
         """Generate playlist artifacts (M3U file and cover image)."""
         ...
@@ -86,6 +87,7 @@ class PlaylistArtifactsService:
         generate_m3u: bool = True,
         save_cover: bool = True,
         skip_album_m3u: bool = True,
+        skip_playlist_m3u: bool = False,
     ) -> ArtifactPaths:
         """Generate playlist artifacts (M3U file and cover image) from downloads.
 
@@ -111,6 +113,7 @@ class PlaylistArtifactsService:
             save_cover: Whether to save playlist cover image.
             skip_album_m3u: Skip M3U generation for album playlists
                 (they already have their own folder structure).
+            skip_playlist_m3u: Skip M3U generation for regular playlists.
 
         Returns:
             ArtifactPaths with m3u and cover paths. Either may be None if
@@ -129,6 +132,7 @@ class PlaylistArtifactsService:
                 playlist_info=playlist_info,
                 results=results,
                 skip_album_m3u=skip_album_m3u,
+                skip_playlist_m3u=skip_playlist_m3u,
             )
 
         # Save playlist cover
@@ -152,6 +156,7 @@ class PlaylistArtifactsService:
         playlist_info: PlaylistInfo,
         results: list[DownloadResult],
         skip_album_m3u: bool,
+        skip_playlist_m3u: bool = False,
     ) -> Path | None:
         """Generate M3U playlist file if appropriate for this content type.
 
@@ -165,6 +170,7 @@ class PlaylistArtifactsService:
             playlist_info: Playlist metadata (content type, etc.).
             results: Download results to include in M3U.
             skip_album_m3u: Whether to skip M3U generation for albums.
+            skip_playlist_m3u: Whether to skip M3U generation for playlists.
 
         Returns:
             Path to generated M3U file, or None if skipped/failed/no tracks.
@@ -172,6 +178,11 @@ class PlaylistArtifactsService:
         # Skip albums if configured (they have inherent folder structure)
         if skip_album_m3u and playlist_info.kind == ContentKind.ALBUM:
             logger.debug("Skipping M3U for album: %s", playlist_info.playlist_id)
+            return None
+
+        # Skip regular playlists if configured
+        if skip_playlist_m3u and playlist_info.kind == ContentKind.PLAYLIST:
+            logger.debug("Skipping M3U for playlist: %s", playlist_info.playlist_id)
             return None
 
         # Skip single tracks (M3U is for playlists, not individual tracks)

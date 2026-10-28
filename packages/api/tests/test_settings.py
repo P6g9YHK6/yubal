@@ -296,3 +296,26 @@ class TestAutoAddSettings:
         monkeypatch.setenv("YUBAL_AUTO_ADD_ALBUMS", "true")
         settings = Settings()
         assert settings.auto_add_albums is True
+
+
+class TestM3uSettings:
+    """Tests for the per-type M3U toggles."""
+
+    @pytest.mark.parametrize("field", ["playlist_m3u", "album_m3u", "artist_m3u"])
+    def test_default_true(self, field: str) -> None:
+        assert getattr(_create_settings(), field) is True
+
+    @pytest.mark.parametrize(
+        ("env", "field"),
+        [
+            ("YUBAL_PLAYLIST_M3U", "playlist_m3u"),
+            ("YUBAL_ALBUM_M3U", "album_m3u"),
+            ("YUBAL_ARTIST_M3U", "artist_m3u"),
+        ],
+    )
+    def test_env_disables(
+        self, monkeypatch: pytest.MonkeyPatch, env: str, field: str
+    ) -> None:
+        monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
+        monkeypatch.setenv(env, "false")
+        assert getattr(Settings(), field) is False

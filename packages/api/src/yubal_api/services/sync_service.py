@@ -285,6 +285,9 @@ class SyncService:
     sleep_interval: float = 0
     max_sleep_interval: float = 0
     sleep_requests: float = 0
+    playlist_m3u: bool = True
+    album_m3u: bool = True
+    artist_m3u: bool = True
     _codec: AudioCodec = field(init=False)
 
     def __post_init__(self) -> None:
@@ -333,6 +336,9 @@ class SyncService:
             sleep_interval=self.sleep_interval,
             max_sleep_interval=self.max_sleep_interval,
             sleep_requests=self.sleep_requests,
+            playlist_m3u=self.playlist_m3u,
+            album_m3u=self.album_m3u,
+            artist_m3u=self.artist_m3u,
         )
         return workflow.execute()
 
@@ -370,6 +376,9 @@ class _WorkflowBase:
     sleep_interval: float
     max_sleep_interval: float
     sleep_requests: float
+    playlist_m3u: bool
+    album_m3u: bool
+    artist_m3u: bool
 
     # Workflow state shared by both subclasses
     content_info: ContentInfo | None = field(default=None, init=False)
@@ -419,6 +428,8 @@ class _WorkflowBase:
                 sleep_requests=self.sleep_requests,
             ),
             generate_m3u=True,
+            skip_album_m3u=not self.album_m3u,
+            skip_playlist_m3u=not self.playlist_m3u,
             save_cover=True,
             max_items=max_items,
             apply_replaygain=self.apply_replaygain,
@@ -814,9 +825,8 @@ class _ArtistSyncWorkflow(_WorkflowBase):
     def _write_artist_artifacts(self, results: list[DownloadResult]) -> None:
         """Write one M3U and cover covering the whole discography.
 
-        Goes through the same artifacts service playlists use. Albums skip
-        their own M3U since each is a single folder, but a
-        discography spans many folders, so a combined file is useful.
+        Goes through the same artifacts service playlists use, so turning
+        the M3U off still saves the cover, exactly like a playlist.
         """
         if self.discography is None or self.content_info is None:
             return
@@ -827,7 +837,7 @@ class _ArtistSyncWorkflow(_WorkflowBase):
             kind=ContentKind.ARTIST,
         )
         PlaylistArtifactsService(ascii_filenames=self.ascii_filenames).compose(
-            self.base_path, playlist_info, results
+            self.base_path, playlist_info, results, generate_m3u=self.artist_m3u
         )
 
     def _handle_album_progress(
