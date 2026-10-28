@@ -110,9 +110,15 @@ class TestArtistSyncWorkflow:
     """Tests for the artist/channel URL fan-out workflow."""
 
     def _run(
-        self, tmp_path: Path, url: str, max_items: int | None = None
+        self,
+        tmp_path: Path,
+        url: str,
+        max_items: int | None = None,
+        artist_m3u: bool = True,
     ) -> SyncResult:
-        service = SyncService(base_path=tmp_path, audio_format="opus")
+        service = SyncService(
+            base_path=tmp_path, audio_format="opus", artist_m3u=artist_m3u
+        )
         return service.run(url, None, CancelToken(), max_items=max_items)
 
     def test_downloads_each_album_in_discography(self, tmp_path: Path) -> None:
@@ -370,6 +376,42 @@ class TestArtistSyncWorkflow:
             ),
         ):
             self._run(tmp_path, "https://music.youtube.com/@Oasis")
+
+        assert not (tmp_path / "_Playlists").exists()
+
+    def test_no_artist_m3u_when_disabled(self, tmp_path: Path) -> None:
+        mock_client = MagicMock()
+        mock_client.resolve_channel_id.return_value = "UCabc"
+        mock_client.get_artist_albums.return_value = ArtistDiscography(
+            name="Oasis", thumbnail_url=None, album_browse_ids=["MPREb_1"]
+        )
+        mock_client.get_album.return_value = _make_album("MPREb_1", "OLAK5uy_1")
+
+        song = tmp_path / "Oasis" / "1994 - Definitely Maybe" / "01 - Rock.opus"
+        mock_downloader = MagicMock()
+        mock_downloader.download_playlist.return_value = iter([])
+        mock_downloader.get_result.return_value = PlaylistDownloadResult(
+            playlist_info=PlaylistInfo(playlist_id="pl1"),
+            download_results=[
+                DownloadResult(
+                    track=_make_download_result().track,
+                    status=DownloadStatus.SUCCESS,
+                    output_path=song,
+                )
+            ],
+        )
+
+        with (
+            patch(
+                "yubal_api.services.sync_service.YTMusicClient",
+                return_value=mock_client,
+            ),
+            patch(
+                "yubal_api.services.sync_service.PlaylistDownloadService",
+                return_value=mock_downloader,
+            ),
+        ):
+            self._run(tmp_path, "https://music.youtube.com/@Oasis", artist_m3u=False)
 
         assert not (tmp_path / "_Playlists").exists()
 

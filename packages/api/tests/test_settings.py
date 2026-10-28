@@ -308,3 +308,11 @@ class TestAlbumM3uSettings:
         monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
         monkeypatch.setenv("YUBAL_ALBUM_M3U", "true")
         assert Settings().album_m3u is True
+
+    def test_artist_m3u_default_true(self) -> None:
+        assert _create_settings().artist_m3u is True
+
+    def test_artist_m3u_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
+        monkeypatch.setenv("YUBAL_ARTIST_M3U", "false")
+        assert Settings().artist_m3u is False

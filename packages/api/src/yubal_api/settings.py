@@ -113,6 +113,10 @@ class Settings(BaseSettings):
         default=False,
         description="Write M3U files for albums too, not just playlists and artists",
     )
+    artist_m3u: bool = Field(
+        default=True,
+        description="Write one M3U per artist covering the whole discography",
+    )
 
     # ReplayGain settings
     replaygain: bool = Field(

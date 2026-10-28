@@ -286,6 +286,7 @@ class SyncService:
     max_sleep_interval: float = 0
     sleep_requests: float = 0
     album_m3u: bool = False
+    artist_m3u: bool = True
     _codec: AudioCodec = field(init=False)
 
     def __post_init__(self) -> None:
@@ -335,6 +336,7 @@ class SyncService:
             max_sleep_interval=self.max_sleep_interval,
             sleep_requests=self.sleep_requests,
             album_m3u=self.album_m3u,
+            artist_m3u=self.artist_m3u,
         )
         return workflow.execute()
 
@@ -373,6 +375,7 @@ class _WorkflowBase:
     max_sleep_interval: float
     sleep_requests: float
     album_m3u: bool
+    artist_m3u: bool
 
     # Workflow state shared by both subclasses
     content_info: ContentInfo | None = field(default=None, init=False)
@@ -813,7 +816,8 @@ class _ArtistSyncWorkflow(_WorkflowBase):
         self._finalize_content_info(total_tracks)
 
         assert self.discography is not None  # set in _run_download_workflow
-        self._write_artist_m3u(m3u_tracks)
+        if self.artist_m3u:
+            self._write_artist_m3u(m3u_tracks)
         self._emit(
             ProgressStep.COMPLETED,
             f"Sync complete: {self.discography.name} ({total_albums} albums)",
