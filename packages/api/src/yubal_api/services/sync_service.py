@@ -285,8 +285,6 @@ class SyncService:
     sleep_interval: float = 0
     max_sleep_interval: float = 0
     sleep_requests: float = 0
-    album_m3u: bool = False
-    artist_m3u: bool = True
     _codec: AudioCodec = field(init=False)
 
     def __post_init__(self) -> None:
@@ -335,8 +333,6 @@ class SyncService:
             sleep_interval=self.sleep_interval,
             max_sleep_interval=self.max_sleep_interval,
             sleep_requests=self.sleep_requests,
-            album_m3u=self.album_m3u,
-            artist_m3u=self.artist_m3u,
         )
         return workflow.execute()
 
@@ -374,8 +370,6 @@ class _WorkflowBase:
     sleep_interval: float
     max_sleep_interval: float
     sleep_requests: float
-    album_m3u: bool
-    artist_m3u: bool
 
     # Workflow state shared by both subclasses
     content_info: ContentInfo | None = field(default=None, init=False)
@@ -425,7 +419,6 @@ class _WorkflowBase:
                 sleep_requests=self.sleep_requests,
             ),
             generate_m3u=True,
-            skip_album_m3u=not self.album_m3u,
             save_cover=True,
             max_items=max_items,
             apply_replaygain=self.apply_replaygain,
@@ -804,8 +797,7 @@ class _ArtistSyncWorkflow(_WorkflowBase):
         self._finalize_content_info(total_tracks)
 
         assert self.discography is not None  # set in _run_download_workflow
-        if self.artist_m3u:
-            self._write_artist_artifacts(all_results)
+        self._write_artist_artifacts(all_results)
         self._emit(
             ProgressStep.COMPLETED,
             f"Sync complete: {self.discography.name} ({total_albums} albums)",
@@ -823,7 +815,7 @@ class _ArtistSyncWorkflow(_WorkflowBase):
         """Write one M3U and cover covering the whole discography.
 
         Goes through the same artifacts service playlists use. Albums skip
-        their own M3U by default since each is a single folder, but a
+        their own M3U since each is a single folder, but a
         discography spans many folders, so a combined file is useful.
         """
         if self.discography is None or self.content_info is None:

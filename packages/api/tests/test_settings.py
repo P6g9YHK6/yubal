@@ -296,23 +296,3 @@ class TestAutoAddSettings:
         monkeypatch.setenv("YUBAL_AUTO_ADD_ALBUMS", "true")
         settings = Settings()
         assert settings.auto_add_albums is True
-
-
-class TestAlbumM3uSettings:
-    """Tests for the album M3U setting."""
-
-    def test_album_m3u_default_false(self) -> None:
-        assert _create_settings().album_m3u is False
-
-    def test_album_m3u_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
-        monkeypatch.setenv("YUBAL_ALBUM_M3U", "true")
-        assert Settings().album_m3u is True
-
-    def test_artist_m3u_default_true(self) -> None:
-        assert _create_settings().artist_m3u is True
-
-    def test_artist_m3u_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
-        monkeypatch.setenv("YUBAL_ARTIST_M3U", "false")
-        assert Settings().artist_m3u is False

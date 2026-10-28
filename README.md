@@ -156,8 +156,6 @@ docker compose up -d
 | `YUBAL_AUTO_ADD_PLAYLISTS` | Auto-add saved library playlists as subscriptions  | `false`          |
 | `YUBAL_AUTO_ADD_ARTISTS`   | Auto-add followed library artists as subscriptions | `false`          |
 | `YUBAL_AUTO_ADD_ALBUMS`    | Auto-add saved library albums as subscriptions     | `false`          |
-| `YUBAL_ALBUM_M3U`          | Also write M3U files for albums                    | `false`          |
-| `YUBAL_ARTIST_M3U`         | Write one M3U per artist discography               | `true`           |
 
 Auto-add requires authenticated [cookies](#-cookies-optional): it scans your YouTube Music library on each sync cycle.
 
