@@ -1,8 +1,10 @@
 """Tests for SyncService audio quality propagation."""
 
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
 from yubal import (
     AudioCodec,
     CancelToken,
@@ -108,6 +110,11 @@ def _make_download_result_object(success_count: int) -> PlaylistDownloadResult:
 
 class TestArtistSyncWorkflow:
     """Tests for the artist/channel URL fan-out workflow."""
+
+    @pytest.fixture(autouse=True)
+    def _no_cover_download(self) -> Iterator[None]:
+        with patch("yubal.services.artifacts.write_playlist_cover", return_value=None):
+            yield
 
     def _run(
         self,
