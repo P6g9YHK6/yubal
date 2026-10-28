@@ -181,6 +181,7 @@ def create_services(repository: SubscriptionRepository) -> Services:
         sleep_interval=settings.sleep_interval,
         max_sleep_interval=settings.max_sleep_interval,
         sleep_requests=settings.sleep_requests,
+        album_m3u=settings.album_m3u,
         subscription_service=subscription_service,
         cache_path=settings.cache_path,
         job_timeout=settings.job_timeout_seconds,

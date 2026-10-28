@@ -56,6 +56,7 @@ class JobExecutor:
         sleep_interval: float = 0,
         max_sleep_interval: float = 0,
         sleep_requests: float = 0,
+        album_m3u: bool = False,
         subscription_service: SubscriptionService | None = None,
         cache_path: Path | None = None,
         job_timeout: float = 1800,
@@ -77,6 +78,7 @@ class JobExecutor:
             sleep_interval: Minimum seconds to wait before each download.
             max_sleep_interval: Maximum seconds to wait before each download.
             sleep_requests: Seconds to wait between extraction requests.
+            album_m3u: Whether to write M3U files for albums.
             subscription_service: Optional service to update subscription metadata.
             cache_path: Optional directory for extraction cache.
             job_timeout: Maximum execution time per job in seconds.
@@ -94,6 +96,7 @@ class JobExecutor:
         self._sleep_interval = sleep_interval
         self._max_sleep_interval = max_sleep_interval
         self._sleep_requests = sleep_requests
+        self._album_m3u = album_m3u
         self._subscription_service = subscription_service
         self._cache_path = cache_path
         self._job_timeout = job_timeout
@@ -254,6 +257,7 @@ class JobExecutor:
                     self._sleep_interval,
                     self._max_sleep_interval,
                     self._sleep_requests,
+                    self._album_m3u,
                 )
                 result = await asyncio.to_thread(
                     sync_service.run,

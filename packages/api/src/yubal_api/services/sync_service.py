@@ -26,8 +26,9 @@ from yubal import (
     is_artist_url,
 )
 from yubal.client import YTMusicClient
+from yubal.lib.m3u import write_m3u
 from yubal.models.enums import ContentKind, SkipReason
-from yubal.models.results import get_audio_bitrate
+from yubal.models.results import DownloadResult, get_audio_bitrate
 from yubal.models.track import PlaylistInfo
 from yubal.models.ytmusic import ArtistDiscography
 from yubal.services.playlist_download_service import PlaylistDownloadService
@@ -284,6 +285,7 @@ class SyncService:
     sleep_interval: float = 0
     max_sleep_interval: float = 0
     sleep_requests: float = 0
+    album_m3u: bool = False
     _codec: AudioCodec = field(init=False)
 
     def __post_init__(self) -> None:
@@ -332,6 +334,7 @@ class SyncService:
             sleep_interval=self.sleep_interval,
             max_sleep_interval=self.max_sleep_interval,
             sleep_requests=self.sleep_requests,
+            album_m3u=self.album_m3u,
         )
         return workflow.execute()
 
@@ -369,6 +372,7 @@ class _WorkflowBase:
     sleep_interval: float
     max_sleep_interval: float
     sleep_requests: float
+    album_m3u: bool
 
     # Workflow state shared by both subclasses
     content_info: ContentInfo | None = field(default=None, init=False)
@@ -418,6 +422,7 @@ class _WorkflowBase:
                 sleep_requests=self.sleep_requests,
             ),
             generate_m3u=True,
+            skip_album_m3u=not self.album_m3u,
             save_cover=True,
             max_items=max_items,
             apply_replaygain=self.apply_replaygain,
@@ -692,6 +697,18 @@ def _merge_phase_stats(stats_list: list[PhaseStats]) -> PhaseStats:
     )
 
 
+def _tracks_on_disk(
+    results: list[DownloadResult],
+) -> list[tuple[TrackMetadata, Path]]:
+    """Tracks that exist on disk (just downloaded or already present)."""
+    return [
+        (r.track, r.output_path)
+        for r in results
+        if r.status in (DownloadStatus.SUCCESS, DownloadStatus.SKIPPED)
+        and r.output_path
+    ]
+
+
 @dataclass
 class _ArtistSyncWorkflow(_WorkflowBase):
     """Workflow for an artist/channel URL.
@@ -746,6 +763,7 @@ class _ArtistSyncWorkflow(_WorkflowBase):
         total_albums = len(album_browse_ids)
         stats_list: list[PhaseStats] = []
         destinations: list[str] = []
+        m3u_tracks: list[tuple[TrackMetadata, Path]] = []
         total_tracks = 0
         remaining_budget = self.max_items  # None means unlimited
 
@@ -783,6 +801,7 @@ class _ArtistSyncWorkflow(_WorkflowBase):
                 continue
 
             stats_list.append(result.download_stats)
+            m3u_tracks.extend(_tracks_on_disk(result.download_results))
             album_track_count = len(result.download_results)
             total_tracks += album_track_count
             if remaining_budget is not None:
@@ -794,6 +813,7 @@ class _ArtistSyncWorkflow(_WorkflowBase):
         self._finalize_content_info(total_tracks)
 
         assert self.discography is not None  # set in _run_download_workflow
+        self._write_artist_m3u(m3u_tracks)
         self._emit(
             ProgressStep.COMPLETED,
             f"Sync complete: {self.discography.name} ({total_albums} albums)",
@@ -805,6 +825,32 @@ class _ArtistSyncWorkflow(_WorkflowBase):
             content_info=self.content_info,
             download_stats=_merge_phase_stats(stats_list),
             destination=self._combine_destinations(destinations),
+        )
+
+    def _write_artist_m3u(self, tracks: list[tuple[TrackMetadata, Path]]) -> None:
+        """Write one M3U covering the whole discography.
+
+        Albums skip their own M3U by default since each is a single folder,
+        but a discography spans many folders, so a combined file is useful.
+        A failure here is logged and never fails the sync.
+        """
+        if not tracks or self.discography is None or self.content_info is None:
+            return
+        try:
+            m3u_path = write_m3u(
+                self.base_path,
+                self.discography.name,
+                self.content_info.playlist_id,
+                tracks,
+                ascii_filenames=self.ascii_filenames,
+            )
+        except OSError as e:
+            logger.warning("Failed to write artist M3U: %s", e)
+            return
+        logger.info(
+            "Generated M3U playlist: '%s'",
+            m3u_path,
+            extra={"file_type": "m3u", "file_path": str(m3u_path)},
         )
 
     def _handle_album_progress(
