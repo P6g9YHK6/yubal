@@ -56,6 +56,22 @@ def clean_filename(s: str, *, ascii_filenames: bool = False) -> str:
     return sanitize_filename(s)
 
 
+def format_playlist_name(playlist_name: str, *, ascii_filenames: bool = False) -> str:
+    """Format a playlist filename from the name alone, without an ID suffix.
+
+    Args:
+        playlist_name: Name of the playlist (will be sanitized).
+        ascii_filenames: If True, transliterate unicode to ASCII.
+
+    Returns:
+        Formatted filename without extension, e.g., "My Favorites".
+    """
+    safe_name = clean_filename(playlist_name, ascii_filenames=ascii_filenames)
+    if not safe_name or not safe_name.strip():
+        safe_name = "Untitled Playlist"
+    return _limit_path_component(safe_name.strip())
+
+
 def format_playlist_filename(
     playlist_name: str, playlist_id: str, *, ascii_filenames: bool = False
 ) -> str:

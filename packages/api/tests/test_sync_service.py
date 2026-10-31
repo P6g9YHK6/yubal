@@ -354,7 +354,7 @@ class TestArtistSyncWorkflow:
 
         m3u_files = list((tmp_path / "_Playlists").glob("*.m3u"))
         assert len(m3u_files) == 1
-        assert m3u_files[0].name.startswith("Oasis [")
+        assert m3u_files[0].name == "Oasis (Discography).m3u"
         content = m3u_files[0].read_text(encoding="utf-8")
         assert "#PLAYLIST:Oasis" in content
         assert "../Oasis/1994 - Definitely Maybe/01 - Rock.opus" in content

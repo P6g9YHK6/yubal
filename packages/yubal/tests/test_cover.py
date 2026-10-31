@@ -257,7 +257,11 @@ class TestWritePlaylistCover:
             tmp_path, "My Favorites", playlist_id, [(sample_track, track_path)]
         )
         cover_path = write_playlist_cover(
-            tmp_path, "My Favorites", playlist_id, "https://example.com/cover.jpg"
+            tmp_path,
+            "My Favorites",
+            playlist_id,
+            "https://example.com/cover.jpg",
+            stem=m3u_path.stem,
         )
 
         assert cover_path is not None

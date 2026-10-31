@@ -132,6 +132,7 @@ def write_playlist_cover(
     cover_url: str | None,
     *,
     ascii_filenames: bool = False,
+    stem: str | None = None,
 ) -> Path | None:
     """Write a playlist cover image as a sidecar file.
 
@@ -145,6 +146,8 @@ def write_playlist_cover(
         playlist_id: Unique playlist ID (last 8 chars appended to filename).
         cover_url: URL of the cover image to download.
         ascii_filenames: If True, transliterate unicode to ASCII in filenames.
+        stem: Filename to use (without extension), normally the M3U's stem.
+            Defaults to the name with an ID suffix.
 
     Returns:
         Path to the written cover file, or None if no cover URL provided
@@ -172,8 +175,7 @@ def write_playlist_cover(
     playlists_dir = base_path / "_Playlists"
     playlists_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build cover file path with ID suffix
-    filename = format_playlist_filename(
+    filename = stem or format_playlist_filename(
         playlist_name, playlist_id, ascii_filenames=ascii_filenames
     )
     cover_path = playlists_dir / f"{filename}.jpg"

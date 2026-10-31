@@ -9,27 +9,68 @@ from os.path import relpath
 from pathlib import Path
 
 from yubal.models.track import TrackMetadata
-from yubal.utils.filename import format_playlist_filename
+from yubal.utils.filename import format_playlist_filename, format_playlist_name
 
 logger = logging.getLogger(__name__)
+
+# Comment line marking which playlist an M3U belongs to, so a later sync can
+# tell its own file from a different playlist that happens to share the name.
+# Players treat it like any other comment.
+PLAYLIST_ID_TAG = "#YUBAL-ID:"
+
+
+def read_m3u_playlist_id(m3u_path: Path) -> str | None:
+    """Return the playlist ID tagged in an M3U file, or None if untagged."""
+    try:
+        with m3u_path.open(encoding="utf-8", errors="replace") as f:
+            for _, line in zip(range(5), f, strict=False):
+                if line.startswith(PLAYLIST_ID_TAG):
+                    return line[len(PLAYLIST_ID_TAG) :].strip()
+    except OSError:
+        return None
+    return None
+
+
+def resolve_playlist_stem(
+    playlists_dir: Path,
+    playlist_name: str,
+    playlist_id: str,
+    *,
+    ascii_filenames: bool = False,
+) -> str:
+    """Pick the filename (without extension) for a playlist's M3U and cover.
+
+    Players like Jellyfin show the filename rather than ``#PLAYLIST:``, so the
+    plain name is used whenever it is free or already ours. The ID suffix is
+    only added when a different playlist owns the plain name.
+    """
+    stem = format_playlist_name(playlist_name, ascii_filenames=ascii_filenames)
+    existing = playlists_dir / f"{stem}.m3u"
+    if not existing.exists() or read_m3u_playlist_id(existing) == playlist_id:
+        return stem
+    return format_playlist_filename(
+        playlist_name, playlist_id, ascii_filenames=ascii_filenames
+    )
 
 
 def generate_m3u(
     tracks: list[tuple[TrackMetadata, Path]],
     m3u_path: Path,
     playlist_name: str,
+    playlist_id: str | None = None,
 ) -> str:
     """Generate M3U playlist content with paths relative to the M3U file location.
 
     Creates an extended M3U format file with track duration and title information.
     Emits a ``#PLAYLIST:`` directive so players (Navidrome, VLC, Plex, MPD, etc.)
     display the playlist by its name rather than by the on-disk filename, which
-    includes a collision-avoiding ID suffix.
+    may carry a collision-avoiding ID suffix.
 
     Args:
         tracks: List of tuples containing (TrackMetadata, file_path) for each track.
         m3u_path: Path where the M3U file will be written (used for relative paths).
         playlist_name: Human-readable playlist name (used for ``#PLAYLIST:``).
+        playlist_id: Playlist ID written as a ``#YUBAL-ID:`` comment, if given.
 
     Returns:
         M3U file content as a string.
@@ -46,6 +87,8 @@ def generate_m3u(
         ../Artist/2024 - Album/01 - Song.opus
     """
     lines = ["#EXTM3U", f"#PLAYLIST:{playlist_name}"]
+    if playlist_id:
+        lines.append(f"{PLAYLIST_ID_TAG}{playlist_id}")
 
     for track, file_path in tracks:
         # Get duration from track metadata, use -1 if unknown
@@ -83,12 +126,14 @@ def write_m3u(
 
     Creates the Playlists directory if it doesn't exist.
     Sanitizes the playlist name for safe filesystem usage.
-    Appends a truncated playlist ID to avoid filename collisions.
+    Appends a truncated playlist ID only when another playlist already
+    owns the plain name.
 
     Args:
         base_path: Base directory for downloads (e.g., /music or ./data).
         playlist_name: Name of the playlist (will be sanitized for filename).
-        playlist_id: Unique playlist ID (last 8 chars appended to filename).
+        playlist_id: Unique playlist ID (tagged in the file, last 8 chars
+            appended to the filename on a name clash).
         tracks: List of tuples containing (TrackMetadata, file_path) for each track.
         ascii_filenames: If True, transliterate unicode to ASCII in filenames.
 
@@ -100,20 +145,19 @@ def write_m3u(
         >>> tracks = [(track_meta, Path("/music/Artist/2024 - Album/01 - Song.opus"))]
         >>> m3u_path = write_m3u(Path("/music"), "My Favorites", "PLxyz123abc", tracks)
         >>> print(m3u_path)
-        /music/_Playlists/My Favorites [z123abc].m3u
+        /music/_Playlists/My Favorites.m3u
     """
     # Create _Playlists directory
     playlists_dir = base_path / "_Playlists"
     playlists_dir.mkdir(parents=True, exist_ok=True)
 
-    # Build M3U file path with ID suffix
-    filename = format_playlist_filename(
-        playlist_name, playlist_id, ascii_filenames=ascii_filenames
+    filename = resolve_playlist_stem(
+        playlists_dir, playlist_name, playlist_id, ascii_filenames=ascii_filenames
     )
     m3u_path = playlists_dir / f"{filename}.m3u"
 
     # Generate and write content
-    content = generate_m3u(tracks, m3u_path, playlist_name)
+    content = generate_m3u(tracks, m3u_path, playlist_name, playlist_id)
     m3u_path.write_text(content, encoding="utf-8")
 
     return m3u_path

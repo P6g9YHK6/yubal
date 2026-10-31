@@ -224,6 +224,68 @@ class TestPlaylistArtifactsService:
         assert cover_path is not None
         mock_m3u.assert_not_called()
 
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_album_named_with_artist(
+        self,
+        _mock_fetch: MagicMock,
+        composer: PlaylistArtifactsService,
+        album_playlist_info: PlaylistInfo,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should put the album artist in front of the album title."""
+        m3u_path, cover_path = composer.compose(
+            tmp_path, album_playlist_info, download_results, skip_album_m3u=False
+        )
+
+        assert m3u_path == tmp_path / "_Playlists" / "Test Artist - Test Album.m3u"
+        assert cover_path == tmp_path / "_Playlists" / "Test Artist - Test Album.jpg"
+        assert "#PLAYLIST:Test Artist - Test Album" in m3u_path.read_text()
+
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_artist_named_as_discography(
+        self,
+        _mock_fetch: MagicMock,
+        composer: PlaylistArtifactsService,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should mark a discography so it isn't mistaken for an album."""
+        info = PlaylistInfo(
+            playlist_id="UCtest", title="Test Artist", kind=ContentKind.ARTIST
+        )
+
+        m3u_path, _ = composer.compose(tmp_path, info, download_results)
+
+        assert m3u_path is not None
+        assert m3u_path.name == "Test Artist (Discography).m3u"
+
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_removes_legacy_suffixed_files(
+        self,
+        _mock_fetch: MagicMock,
+        composer: PlaylistArtifactsService,
+        album_playlist_info: PlaylistInfo,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should drop the old "<title> [<id>]" files once renamed."""
+        playlists = tmp_path / "_Playlists"
+        playlists.mkdir()
+        (playlists / "Test Album [_test123].m3u").write_text("#EXTM3U\n")
+        (playlists / "Test Album [_test123].jpg").write_bytes(b"old")
+        (playlists / "Other [abcdefgh].m3u").write_text("#EXTM3U\n")
+
+        composer.compose(
+            tmp_path, album_playlist_info, download_results, skip_album_m3u=False
+        )
+
+        assert sorted(f.name for f in playlists.iterdir()) == [
+            "Other [abcdefgh].m3u",
+            "Test Artist - Test Album.jpg",
+            "Test Artist - Test Album.m3u",
+        ]
+
     def test_collect_tracks_filters_successful(
         self,
         composer: PlaylistArtifactsService,

@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from yubal.lib.m3u import (
     generate_m3u,
+    read_m3u_playlist_id,
     write_m3u,
 )
 from yubal.models.enums import VideoType
@@ -200,17 +201,18 @@ class TestWriteM3U:
         content = m3u_path.read_text(encoding="utf-8")
         assert content.startswith("#EXTM3U\n")
 
-    def test_returns_correct_path_with_id_suffix(
+    def test_returns_plain_name_when_free(
         self, sample_track: TrackMetadata, tmp_path: Path
     ) -> None:
-        """Should return path with playlist ID suffix."""
+        """Should name the file after the playlist alone when nothing clashes."""
         track_path = tmp_path / "Radiohead" / "1997 - OK Computer" / "01 - Airbag.opus"
 
         m3u_path = write_m3u(
             tmp_path, "My Favorites", "PLtest12345678", [(sample_track, track_path)]
         )
 
-        assert m3u_path == tmp_path / "_Playlists" / "My Favorites [12345678].m3u"
+        assert m3u_path == tmp_path / "_Playlists" / "My Favorites.m3u"
+        assert read_m3u_playlist_id(m3u_path) == "PLtest12345678"
 
     def test_sanitizes_playlist_name(
         self, sample_track: TrackMetadata, tmp_path: Path
@@ -244,7 +246,7 @@ class TestWriteM3U:
             tmp_path, "", "PLtest12345678", [(sample_track, track_path)]
         )
 
-        assert m3u_path.name == "Untitled Playlist [12345678].m3u"
+        assert m3u_path.name == "Untitled Playlist.m3u"
 
     def test_handles_unicode_playlist_name(
         self, sample_track: TrackMetadata, tmp_path: Path
@@ -328,5 +330,32 @@ class TestWriteM3U:
         assert m3u_path1 != m3u_path2
         assert m3u_path1.exists()
         assert m3u_path2.exists()
-        assert "abc123" in m3u_path1.name
-        assert "xyz789" in m3u_path2.name
+        assert m3u_path1.name == "Favorites.m3u"
+        assert m3u_path2.name == "Favorites [2_xyz789].m3u"
+
+    def test_same_id_keeps_plain_name(
+        self, sample_track: TrackMetadata, tmp_path: Path
+    ) -> None:
+        """Should rewrite its own file in place on the next sync."""
+        track_path = tmp_path / "Radiohead" / "1997 - OK Computer" / "01 - Airbag.opus"
+
+        first = write_m3u(tmp_path, "Favorites", "PL1", [(sample_track, track_path)])
+        second = write_m3u(tmp_path, "Favorites", "PL1", [(sample_track, track_path)])
+
+        assert first == second == tmp_path / "_Playlists" / "Favorites.m3u"
+
+    def test_untagged_file_is_not_overwritten(
+        self, sample_track: TrackMetadata, tmp_path: Path
+    ) -> None:
+        """Should leave a hand-made M3U with the same name alone."""
+        track_path = tmp_path / "Radiohead" / "1997 - OK Computer" / "01 - Airbag.opus"
+        playlists = tmp_path / "_Playlists"
+        playlists.mkdir()
+        (playlists / "Favorites.m3u").write_text("#EXTM3U\nmine.opus\n")
+
+        m3u_path = write_m3u(
+            tmp_path, "Favorites", "PLtest12345678", [(sample_track, track_path)]
+        )
+
+        assert m3u_path.name == "Favorites [12345678].m3u"
+        assert (playlists / "Favorites.m3u").read_text() == "#EXTM3U\nmine.opus\n"

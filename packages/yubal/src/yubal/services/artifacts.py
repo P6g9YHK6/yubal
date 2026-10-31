@@ -4,11 +4,12 @@ import logging
 from pathlib import Path
 from typing import NamedTuple, Protocol
 
-from yubal.lib.m3u import write_m3u
+from yubal.lib.m3u import resolve_playlist_stem, write_m3u
 from yubal.models.enums import ContentKind, DownloadStatus
 from yubal.models.results import DownloadResult
 from yubal.models.track import PlaylistInfo, TrackMetadata
 from yubal.utils.cover import write_playlist_cover
+from yubal.utils.filename import format_playlist_filename
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ class PlaylistArtifactsService:
         m3u_path: Path | None = None
         cover_path: Path | None = None
 
-        playlist_name = playlist_info.title or "Untitled Playlist"
+        playlist_name = self._display_name(playlist_info, results)
 
         # Generate M3U playlist
         if generate_m3u:
@@ -135,15 +136,76 @@ class PlaylistArtifactsService:
                 skip_playlist_m3u=skip_playlist_m3u,
             )
 
-        # Save playlist cover
+        # Save playlist cover, named like the M3U so players pair them
         if save_cover:
+            stem = m3u_path.stem if m3u_path else None
             cover_path = self._save_cover_if_available(
                 base_path=base_path,
                 playlist_name=playlist_name,
                 playlist_info=playlist_info,
+                stem=stem,
             )
 
+        self._remove_legacy_files(base_path, playlist_info, m3u_path, cover_path)
+
         return ArtifactPaths(m3u=m3u_path, cover=cover_path)
+
+    # ============================================================================
+    # NAMING - What players show as the playlist title
+    # ============================================================================
+
+    @staticmethod
+    def _display_name(
+        playlist_info: PlaylistInfo, results: list[DownloadResult]
+    ) -> str:
+        """Name the playlist the way it should read in a player.
+
+        Albums get their artist in front so "Live" from two bands can be told
+        apart, and a discography is marked so it doesn't look like a
+        self-titled album.
+        """
+        title = playlist_info.title or "Untitled Playlist"
+        if playlist_info.kind == ContentKind.ARTIST:
+            return f"{title} (Discography)"
+        if playlist_info.kind == ContentKind.ALBUM:
+            artist = next(
+                (
+                    ", ".join(r.track.album_artists)
+                    for r in results
+                    if r.track and r.track.album_artists
+                ),
+                playlist_info.author,
+            )
+            if artist and not title.startswith(f"{artist} - "):
+                return f"{artist} - {title}"
+        return title
+
+    def _remove_legacy_files(
+        self,
+        base_path: Path,
+        playlist_info: PlaylistInfo,
+        m3u_path: Path | None,
+        cover_path: Path | None,
+    ) -> None:
+        """Drop files left under the old "<title> [<id>]" name.
+
+        Older versions always added the ID suffix and used the bare album or
+        artist name. Once this playlist has been written under its new name,
+        the old file is a stale duplicate in the player.
+        """
+        legacy_stem = format_playlist_filename(
+            playlist_info.title or "Untitled Playlist",
+            playlist_info.playlist_id,
+            ascii_filenames=self._ascii_filenames,
+        )
+        playlists_dir = base_path / "_Playlists"
+        for new_path, suffix in ((m3u_path, ".m3u"), (cover_path, ".jpg")):
+            if new_path is None:
+                continue
+            legacy = playlists_dir / f"{legacy_stem}{suffix}"
+            if legacy != new_path and legacy.is_file():
+                legacy.unlink()
+                logger.info("Removed old playlist file: '%s'", legacy)
 
     # ============================================================================
     # M3U GENERATION - Create playlist file with track paths
@@ -245,6 +307,7 @@ class PlaylistArtifactsService:
         base_path: Path,
         playlist_name: str,
         playlist_info: PlaylistInfo,
+        stem: str | None = None,
     ) -> Path | None:
         """Save playlist cover image as a sidecar JPEG file.
 
@@ -256,6 +319,8 @@ class PlaylistArtifactsService:
             base_path: Base directory for output files.
             playlist_name: Name to use for the cover file.
             playlist_info: Playlist metadata (cover URL, etc.).
+            stem: Filename to use, normally the M3U's. Resolved like the M3U
+                when no M3U was written.
 
         Returns:
             Path to saved cover file, or None if no cover URL or save failed.
@@ -271,12 +336,20 @@ class PlaylistArtifactsService:
             )
             return None
 
+        if stem is None:
+            stem = resolve_playlist_stem(
+                base_path / "_Playlists",
+                playlist_name,
+                playlist_info.playlist_id,
+                ascii_filenames=self._ascii_filenames,
+            )
         cover_path = write_playlist_cover(
             base_path,
             playlist_name,
             playlist_info.playlist_id,
             playlist_info.cover_url,
             ascii_filenames=self._ascii_filenames,
+            stem=stem,
         )
         if cover_path:
             logger.info(
