@@ -8,7 +8,7 @@ Handles playlists, albums, and single tracks.
 import logging
 import os
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -718,10 +718,21 @@ class _ArtistSyncWorkflow(_WorkflowBase):
     type: a cap on total tracks downloaded, here summed across the whole
     discography rather than a single album/playlist. Once the budget is
     spent, remaining albums are skipped entirely.
+
+    The only playlist file is the one for the whole discography. A file per
+    release would flood players, more than half of them being one track singles.
     """
 
     # Workflow state
     discography: ArtistDiscography | None = field(default=None, init=False)
+
+    def _build_download_config(self, max_items: int | None) -> PlaylistDownloadConfig:
+        """Download each release without its own M3U or cover."""
+        return replace(
+            super()._build_download_config(max_items),
+            generate_m3u=False,
+            save_cover=False,
+        )
 
     def _run_download_workflow(self) -> SyncResult:
         client = YTMusicClient(cookies_path=self.cookies_path)

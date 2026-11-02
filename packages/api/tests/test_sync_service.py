@@ -360,6 +360,33 @@ class TestArtistSyncWorkflow:
         assert "../Oasis/1994 - Definitely Maybe/01 - Rock.opus" in content
         assert "../Oasis/1995 - Morning Glory/01 - Hello.opus" in content
 
+    def test_releases_get_no_m3u_or_cover_of_their_own(self, tmp_path: Path) -> None:
+        mock_client = MagicMock()
+        mock_client.resolve_channel_id.return_value = "UCabcdefgh12345678"
+        mock_client.get_artist_albums.return_value = ArtistDiscography(
+            name="Oasis", thumbnail_url=None, album_browse_ids=["MPREb_1"]
+        )
+        mock_client.get_album.return_value = _make_album("MPREb_1", "OLAK5uy_1")
+        mock_downloader = MagicMock()
+        mock_downloader.download_playlist.return_value = iter([])
+        mock_downloader.get_result.return_value = None
+
+        with (
+            patch(
+                "yubal_api.services.sync_service.YTMusicClient",
+                return_value=mock_client,
+            ),
+            patch(
+                "yubal_api.services.sync_service.PlaylistDownloadService",
+                return_value=mock_downloader,
+            ) as mock_service,
+        ):
+            self._run(tmp_path, "https://music.youtube.com/@Oasis")
+
+        config = mock_service.call_args[0][0]
+        assert config.generate_m3u is False
+        assert config.save_cover is False
+
     def test_no_artist_m3u_without_tracks_on_disk(self, tmp_path: Path) -> None:
         mock_client = MagicMock()
         mock_client.resolve_channel_id.return_value = "UCabc"
@@ -449,6 +476,11 @@ class TestSyncServiceM3uToggles:
         config = self._config_for(tmp_path)
         assert config.skip_album_m3u is False
         assert config.skip_playlist_m3u is False
+
+    def test_album_added_on_its_own_keeps_m3u_and_cover(self, tmp_path: Path) -> None:
+        config = self._config_for(tmp_path)
+        assert config.generate_m3u is True
+        assert config.save_cover is True
 
     def test_album_m3u_disabled(self, tmp_path: Path) -> None:
         assert self._config_for(tmp_path, album_m3u=False).skip_album_m3u is True

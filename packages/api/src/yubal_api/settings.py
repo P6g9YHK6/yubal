@@ -113,7 +113,7 @@ class Settings(BaseSettings):
         default=True, description="Write an M3U file for each synced playlist"
     )
     album_m3u: bool = Field(
-        default=True, description="Write an M3U file for each synced album"
+        default=True, description="Write an M3U file for each album added on its own"
     )
     artist_m3u: bool = Field(
         default=True, description="Write one M3U per artist covering the discography"
