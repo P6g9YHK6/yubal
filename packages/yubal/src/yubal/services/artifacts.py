@@ -4,12 +4,21 @@ import logging
 from pathlib import Path
 from typing import NamedTuple, Protocol
 
-from yubal.lib.m3u import resolve_playlist_stem, write_m3u
+from yubal.lib.m3u import (
+    is_album_playlist_id,
+    read_m3u_playlist_id,
+    resolve_playlist_stem,
+    write_m3u,
+)
 from yubal.models.enums import ContentKind, DownloadStatus
 from yubal.models.results import DownloadResult
 from yubal.models.track import PlaylistInfo, TrackMetadata
 from yubal.utils.cover import write_playlist_cover
-from yubal.utils.filename import format_playlist_filename
+from yubal.utils.filename import (
+    clean_filename,
+    format_playlist_filename,
+    format_playlist_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +155,9 @@ class PlaylistArtifactsService:
                 stem=stem,
             )
 
-        self._remove_legacy_files(base_path, playlist_info, m3u_path, cover_path)
+        self._remove_legacy_files(
+            base_path, playlist_info, playlist_name, m3u_path, cover_path
+        )
 
         return ArtifactPaths(m3u=m3u_path, cover=cover_path)
 
@@ -162,12 +173,15 @@ class PlaylistArtifactsService:
 
         Albums get their artist in front so "Live" from two bands can be told
         apart, and a discography is marked so it doesn't look like a
-        self-titled album.
+        self-titled album. An album ID counts as an album even when the
+        extractor filed it as a playlist because it couldn't match every track.
         """
         title = playlist_info.title or "Untitled Playlist"
         if playlist_info.kind == ContentKind.ARTIST:
             return f"{title} (Discography)"
-        if playlist_info.kind == ContentKind.ALBUM:
+        if playlist_info.kind == ContentKind.ALBUM or is_album_playlist_id(
+            playlist_info.playlist_id
+        ):
             artist = next(
                 (
                     ", ".join(r.track.album_artists)
@@ -184,28 +198,46 @@ class PlaylistArtifactsService:
         self,
         base_path: Path,
         playlist_info: PlaylistInfo,
+        playlist_name: str,
         m3u_path: Path | None,
         cover_path: Path | None,
     ) -> None:
-        """Drop files left under the old "<title> [<id>]" name.
+        """Drop files this playlist left behind under an older name.
 
-        Older versions always added the ID suffix and used the bare album or
-        artist name. Once this playlist has been written under its new name,
-        the old file is a stale duplicate in the player.
+        Older versions always added the ID suffix, used the bare album or
+        artist name, and kept double spaces. Once this playlist has been written
+        under its new name, the old file is a stale duplicate in the player.
+        A name without the ID only counts if the M3U there is tagged as ours.
         """
-        legacy_stem = format_playlist_filename(
-            playlist_info.title or "Untitled Playlist",
-            playlist_info.playlist_id,
-            ascii_filenames=self._ascii_filenames,
-        )
+        playlist_id = playlist_info.playlist_id
+        title = playlist_info.title or "Untitled Playlist"
+        ascii_filenames = self._ascii_filenames
         playlists_dir = base_path / "_Playlists"
+
+        stale_stems = {
+            format_playlist_filename(name, playlist_id, ascii_filenames=ascii_filenames)
+            for name in (title, playlist_name)
+        }
+        unsuffixed_stems = (
+            format_playlist_name(title, ascii_filenames=ascii_filenames),
+            clean_filename(title, ascii_filenames=ascii_filenames).strip(),
+            clean_filename(playlist_name, ascii_filenames=ascii_filenames).strip(),
+        )
+        stale_stems.update(
+            stem
+            for stem in unsuffixed_stems
+            if stem
+            and read_m3u_playlist_id(playlists_dir / f"{stem}.m3u") == playlist_id
+        )
+
         for new_path, suffix in ((m3u_path, ".m3u"), (cover_path, ".jpg")):
             if new_path is None:
                 continue
-            legacy = playlists_dir / f"{legacy_stem}{suffix}"
-            if legacy != new_path and legacy.is_file():
-                legacy.unlink()
-                logger.info("Removed old playlist file: '%s'", legacy)
+            for stem in stale_stems:
+                legacy = playlists_dir / f"{stem}{suffix}"
+                if legacy != new_path and legacy.is_file():
+                    legacy.unlink()
+                    logger.info("Removed old playlist file: '%s'", legacy)
 
     # ============================================================================
     # M3U GENERATION - Create playlist file with track paths

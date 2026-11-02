@@ -344,6 +344,29 @@ class TestWriteM3U:
 
         assert first == second == tmp_path / "_Playlists" / "Favorites.m3u"
 
+    def test_album_ids_with_different_tracks_stay_separate(
+        self, sample_track: TrackMetadata, tmp_path: Path
+    ) -> None:
+        """Should keep a single apart from the album it shares a name with."""
+        album_dir = tmp_path / "Radiohead" / "1997 - OK Computer"
+        single_dir = tmp_path / "Radiohead" / "1997 - Airbag"
+
+        album = write_m3u(
+            tmp_path,
+            "OK Computer",
+            "OLAK5uy_album111",
+            [(sample_track, album_dir / "01 - Airbag.opus")],
+        )
+        single = write_m3u(
+            tmp_path,
+            "OK Computer",
+            "OLAK5uy_single22",
+            [(sample_track, single_dir / "01 - Airbag.opus")],
+        )
+
+        assert album.name == "OK Computer.m3u"
+        assert single.name == "OK Computer [single22].m3u"
+
     def test_untagged_file_is_not_overwritten(
         self, sample_track: TrackMetadata, tmp_path: Path
     ) -> None:

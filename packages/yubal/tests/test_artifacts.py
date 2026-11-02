@@ -286,6 +286,119 @@ class TestPlaylistArtifactsService:
             "Test Artist - Test Album.m3u",
         ]
 
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_album_id_named_with_artist_when_filed_as_playlist(
+        self,
+        _mock_fetch: MagicMock,
+        composer: PlaylistArtifactsService,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should name an album ID like an album and drop its bare-named file."""
+        info = PlaylistInfo(
+            playlist_id="OLAK5uy_one",
+            title="Test Album",
+            kind=ContentKind.PLAYLIST,
+            cover_url="https://example.com/cover.jpg",
+        )
+        playlists = tmp_path / "_Playlists"
+        playlists.mkdir()
+        (playlists / "Test Album.m3u").write_text(
+            "#EXTM3U\n#YUBAL-ID:OLAK5uy_one\nold.opus\n"
+        )
+        (playlists / "Test Album.jpg").write_bytes(b"old")
+
+        m3u_path, _ = composer.compose(tmp_path, info, download_results)
+
+        assert m3u_path == playlists / "Test Artist - Test Album.m3u"
+        assert sorted(f.name for f in playlists.iterdir()) == [
+            "Test Artist - Test Album.jpg",
+            "Test Artist - Test Album.m3u",
+        ]
+
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_keeps_bare_named_file_of_other_playlist(
+        self,
+        _mock_fetch: MagicMock,
+        composer: PlaylistArtifactsService,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should not touch a file with the old name that isn't tagged as ours."""
+        info = PlaylistInfo(
+            playlist_id="OLAK5uy_one",
+            title="Test Album",
+            kind=ContentKind.PLAYLIST,
+            cover_url="https://example.com/cover.jpg",
+        )
+        playlists = tmp_path / "_Playlists"
+        playlists.mkdir()
+        (playlists / "Test Album.m3u").write_text(
+            "#EXTM3U\n#YUBAL-ID:PLother\nx.opus\n"
+        )
+
+        composer.compose(tmp_path, info, download_results)
+
+        assert (playlists / "Test Album.m3u").exists()
+
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_same_album_under_new_id_replaces_suffixed_copy(
+        self,
+        _mock_fetch: MagicMock,
+        composer: PlaylistArtifactsService,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should merge album IDs with the same tracks and clean up the old copy."""
+        first = PlaylistInfo(
+            playlist_id="OLAK5uy_first111",
+            title="Test Album",
+            kind=ContentKind.ALBUM,
+            cover_url="https://example.com/cover.jpg",
+        )
+        second = PlaylistInfo(
+            playlist_id="OLAK5uy_second22",
+            title="Test Album",
+            kind=ContentKind.ALBUM,
+            cover_url="https://example.com/cover.jpg",
+        )
+        composer.compose(tmp_path, first, download_results, skip_album_m3u=False)
+        playlists = tmp_path / "_Playlists"
+        (playlists / "Test Artist - Test Album [second22].m3u").write_text("#EXTM3U\n")
+
+        m3u_path, _ = composer.compose(
+            tmp_path, second, download_results, skip_album_m3u=False
+        )
+
+        assert m3u_path == playlists / "Test Artist - Test Album.m3u"
+        assert sorted(f.name for f in playlists.iterdir()) == [
+            "Test Artist - Test Album.jpg",
+            "Test Artist - Test Album.m3u",
+        ]
+
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_double_space_renamed(
+        self,
+        _mock_fetch: MagicMock,
+        composer: PlaylistArtifactsService,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should collapse the gap a removed slash leaves and drop the old file."""
+        info = PlaylistInfo(
+            playlist_id="PLslash", title="Side A / Side B", kind=ContentKind.PLAYLIST
+        )
+        playlists = tmp_path / "_Playlists"
+        playlists.mkdir()
+        (playlists / "Side A  Side B.m3u").write_text(
+            "#EXTM3U\n#YUBAL-ID:PLslash\nold.opus\n"
+        )
+
+        m3u_path, _ = composer.compose(tmp_path, info, download_results)
+
+        assert m3u_path == playlists / "Side A Side B.m3u"
+        assert not (playlists / "Side A  Side B.m3u").exists()
+
     def test_collect_tracks_filters_successful(
         self,
         composer: PlaylistArtifactsService,

@@ -56,6 +56,16 @@ def clean_filename(s: str, *, ascii_filenames: bool = False) -> str:
     return sanitize_filename(s)
 
 
+def _clean_playlist_name(playlist_name: str, *, ascii_filenames: bool = False) -> str:
+    """Sanitize a playlist name, falling back when nothing is left.
+
+    Removing a character like the slash in "A / B" leaves a double space, which
+    players show as is. Track paths keep theirs, changing those would re-download.
+    """
+    safe_name = clean_filename(playlist_name, ascii_filenames=ascii_filenames)
+    return " ".join(safe_name.split()) or "Untitled Playlist"
+
+
 def format_playlist_name(playlist_name: str, *, ascii_filenames: bool = False) -> str:
     """Format a playlist filename from the name alone, without an ID suffix.
 
@@ -66,10 +76,8 @@ def format_playlist_name(playlist_name: str, *, ascii_filenames: bool = False) -
     Returns:
         Formatted filename without extension, e.g., "My Favorites".
     """
-    safe_name = clean_filename(playlist_name, ascii_filenames=ascii_filenames)
-    if not safe_name or not safe_name.strip():
-        safe_name = "Untitled Playlist"
-    return _limit_path_component(safe_name.strip())
+    safe_name = _clean_playlist_name(playlist_name, ascii_filenames=ascii_filenames)
+    return _limit_path_component(safe_name)
 
 
 def format_playlist_filename(
@@ -85,9 +93,7 @@ def format_playlist_filename(
     Returns:
         Formatted filename without extension, e.g., "My Favorites [abcd1234]".
     """
-    safe_name = clean_filename(playlist_name, ascii_filenames=ascii_filenames)
-    if not safe_name or not safe_name.strip():
-        safe_name = "Untitled Playlist"
+    safe_name = _clean_playlist_name(playlist_name, ascii_filenames=ascii_filenames)
 
     # Use last 8 chars of playlist_id (or full ID if shorter)
     id_suffix = playlist_id[-8:] if len(playlist_id) > 8 else playlist_id
