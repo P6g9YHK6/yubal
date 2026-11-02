@@ -158,7 +158,7 @@ class Settings(BaseSettings):
     job_timeout_seconds: int = Field(
         default=1800,
         ge=60,
-        description="Job execution timeout in seconds",
+        description="Kill a job after this many seconds without progress",
     )
 
     # Timezone

@@ -31,7 +31,7 @@ class JobExecutor:
     Key Responsibilities:
         - Background task lifecycle (creation, tracking, cleanup)
         - Cancellation via CancelToken registry
-        - Timeout enforcement via asyncio.timeout
+        - Stall detection via asyncio.timeout, pushed back on every progress update
         - Job queue continuation (starts next pending job when one completes)
         - Progress callback wiring to update job store
 
@@ -85,7 +85,9 @@ class JobExecutor:
             artist_m3u: Whether to write one M3U per artist discography.
             subscription_service: Optional service to update subscription metadata.
             cache_path: Optional directory for extraction cache.
-            job_timeout: Maximum execution time per job in seconds.
+            job_timeout: Seconds a job may go without progress before it is
+                killed. Progress comes per track, so long jobs can run as long
+                as they need while a stuck one still dies.
         """
         self._job_store = job_store
         self._base_path = base_path
@@ -210,7 +212,7 @@ class JobExecutor:
             if cancel_token.is_cancelled:
                 return
 
-            async with asyncio.timeout(self._job_timeout):
+            async with asyncio.timeout(self._job_timeout) as deadline:
                 self._job_store.transition(
                     job_id,
                     JobStatus.FETCHING_INFO,
@@ -220,6 +222,10 @@ class JobExecutor:
                 # Create progress callback that updates job store
                 loop = asyncio.get_running_loop()
 
+                def extend_deadline() -> None:
+                    if not deadline.expired():
+                        deadline.reschedule(loop.time() + self._job_timeout)
+
                 def on_progress(
                     step: ProgressStep,
                     _message: str,
@@ -228,6 +234,8 @@ class JobExecutor:
                 ) -> None:
                     if cancel_token.is_cancelled:
                         return
+
+                    loop.call_soon_threadsafe(extend_deadline)
 
                     status = self._step_to_status(step)
                     content_info = (
@@ -307,7 +315,9 @@ class JobExecutor:
 
         except TimeoutError:
             logger.warning(
-                "Job %s timed out after %d seconds", job_id[:8], self._job_timeout
+                "Job %s timed out after %d seconds without progress",
+                job_id[:8],
+                self._job_timeout,
             )
             cancel_token.cancel()
             self._job_store.transition(job_id, JobStatus.FAILED)

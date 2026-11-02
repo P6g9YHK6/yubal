@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 from yubal import AudioCodec
-from yubal_api.domain.enums import JobSource, JobStatus
+from yubal_api.domain.enums import JobSource, JobStatus, ProgressStep
 from yubal_api.domain.job import Job
 from yubal_api.services.job_executor import JobExecutor
 from yubal_api.services.sync_service import SyncResult, SyncService
@@ -109,6 +109,63 @@ class TestExecutorTimeout:
         assert JobStatus.COMPLETED in statuses
         assert JobStatus.FAILED not in statuses
         assert "test-job" in store.released
+
+    @pytest.mark.asyncio
+    async def test_progress_pushes_back_timeout(
+        self,
+        store: FakeJobStore,
+        tmp_path: Any,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A job outliving the timeout should survive while it keeps progressing."""
+        executor = JobExecutor(job_store=store, base_path=tmp_path, job_timeout=0.5)
+
+        def progressing_run(
+            _self: Any, _url: str, on_progress: Any, *_args: Any
+        ) -> SyncResult:
+            for _ in range(10):
+                time.sleep(0.1)
+                on_progress(ProgressStep.DOWNLOADING, "", 50.0, None)
+            return SyncResult(success=True)
+
+        monkeypatch.setattr(
+            "yubal_api.services.job_executor.SyncService.run",
+            progressing_run,
+        )
+
+        await executor._run_job("test-job", "https://example.com")
+
+        statuses = [s for _, s in store.transitions]
+        assert statuses[-1] == JobStatus.COMPLETED
+        assert JobStatus.FAILED not in statuses
+
+    @pytest.mark.asyncio
+    async def test_stall_after_progress_still_times_out(
+        self,
+        executor: JobExecutor,
+        store: FakeJobStore,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A job that stops progressing should be killed despite earlier progress."""
+
+        def stalling_run(
+            _self: Any, _url: str, on_progress: Any, *_args: Any
+        ) -> SyncResult:
+            on_progress(ProgressStep.DOWNLOADING, "", 50.0, None)
+            time.sleep(0.5)
+            on_progress(ProgressStep.DOWNLOADING, "", 60.0, None)
+            return SyncResult(success=True)
+
+        monkeypatch.setattr(
+            "yubal_api.services.job_executor.SyncService.run",
+            stalling_run,
+        )
+
+        await executor._run_job("test-job", "https://example.com")
+
+        statuses = [s for _, s in store.transitions]
+        assert statuses[-1] == JobStatus.FAILED
+        assert JobStatus.COMPLETED not in statuses
 
 
 @pytest.mark.enable_socket
