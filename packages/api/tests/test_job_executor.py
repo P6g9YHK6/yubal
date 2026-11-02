@@ -35,6 +35,9 @@ class FakeJobStore:
         self.transitions.append((job_id, status))
         return Job(id=job_id, url="", audio_format=AudioCodec.OPUS, status=status)
 
+    def unfinished_urls(self) -> set[str]:
+        return set()
+
     def pop_next_pending(self) -> Job | None:
         return self._pending.pop(0) if self._pending else None
 

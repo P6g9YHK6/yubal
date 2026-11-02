@@ -48,6 +48,10 @@ class JobExecutionStore(Protocol):
         """Update job status atomically."""
         ...
 
+    def unfinished_urls(self) -> set[str]:
+        """Get the URLs of all jobs that are queued or running."""
+        ...
+
     def pop_next_pending(self) -> Job | None:
         """Get and activate the next pending job."""
         ...

@@ -174,3 +174,58 @@ class TestLibraryScan:
         job_ids = scheduler.sync_all()
 
         assert job_ids == []
+
+
+class TestSkipsQueuedSubscriptions:
+    """Tests for full sweeps leaving already queued subscriptions alone."""
+
+    @pytest.fixture
+    def queued_setup(self, mock_settings: MagicMock) -> tuple[Scheduler, MagicMock]:
+        queued = MagicMock(url="https://example.com/queued", id=uuid4())
+        queued.name = "queued"
+        free = MagicMock(url="https://example.com/free", id=uuid4())
+        free.name = "free"
+        subscription_service = MagicMock()
+        subscription_service.list.return_value = [queued, free]
+        subscription_service.get.return_value = queued
+        job_executor = MagicMock()
+        job_executor.unfinished_job_urls.return_value = {queued.url}
+        job_executor.create_and_start_job.return_value = MagicMock(id="job-12345")
+        return (
+            Scheduler(subscription_service, job_executor, mock_settings),
+            job_executor,
+        )
+
+    @staticmethod
+    def _created_urls(job_executor: MagicMock) -> list[str]:
+        return [c.args[0] for c in job_executor.create_and_start_job.call_args_list]
+
+    def test_sync_all_skips_queued(
+        self, queued_setup: tuple[Scheduler, MagicMock]
+    ) -> None:
+        scheduler, job_executor = queued_setup
+
+        job_ids = scheduler.sync_all()
+
+        assert job_ids == ["job-12345"]
+        assert self._created_urls(job_executor) == ["https://example.com/free"]
+
+    @pytest.mark.enable_socket
+    @pytest.mark.asyncio
+    async def test_scheduled_sweep_skips_queued(
+        self, queued_setup: tuple[Scheduler, MagicMock]
+    ) -> None:
+        scheduler, job_executor = queued_setup
+
+        await scheduler._sync_all_enabled()
+
+        assert self._created_urls(job_executor) == ["https://example.com/free"]
+
+    def test_syncing_one_subscription_still_works_when_queued(
+        self, queued_setup: tuple[Scheduler, MagicMock]
+    ) -> None:
+        """Should not turn a manual sync into a misleading queue full error."""
+        scheduler, job_executor = queued_setup
+
+        assert scheduler.sync_subscription(uuid4()) == "job-12345"
+        assert self._created_urls(job_executor) == ["https://example.com/queued"]

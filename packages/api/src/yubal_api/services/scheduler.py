@@ -155,6 +155,19 @@ class Scheduler:
                 )
         return job_ids
 
+    def _without_queued(self, subscriptions: list[Subscription]) -> list[Subscription]:
+        """Drop subscriptions that already have a job queued or running.
+
+        A full sweep can take longer than the time between two of them, and
+        syncing the same thing twice only wastes the rate limit.
+        """
+        queued = self._job_executor.unfinished_job_urls()
+        remaining = [s for s in subscriptions if s.url not in queued]
+        skipped = len(subscriptions) - len(remaining)
+        if skipped:
+            logger.info("Skipped %d subscription(s) already in the queue", skipped)
+        return remaining
+
     def _run_library_scan(self) -> None:
         """Scan the library for new items to auto-add, if configured.
 
@@ -174,7 +187,7 @@ class Scheduler:
         """Sync all enabled subscriptions (async wrapper)."""
         self._run_library_scan()
         return self._create_jobs_for_subscriptions(
-            self._subscription_service.list(enabled=True)
+            self._without_queued(self._subscription_service.list(enabled=True))
         )
 
     def sync_subscription(self, subscription_id: UUID) -> str | None:
@@ -195,5 +208,5 @@ class Scheduler:
         """Create sync jobs for all enabled subscriptions. Returns job_ids."""
         self._run_library_scan()
         return self._create_jobs_for_subscriptions(
-            self._subscription_service.list(enabled=True)
+            self._without_queued(self._subscription_service.list(enabled=True))
         )

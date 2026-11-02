@@ -41,7 +41,7 @@ from yubal_api.api.routes import (
     scheduler,
     subscriptions,
 )
-from yubal_api.db import SubscriptionRepository, create_db_engine
+from yubal_api.db import JobRepository, SubscriptionRepository, create_db_engine
 from yubal_api.schemas.jobs import (
     ClearedEvent,
     CreatedEvent,
@@ -128,11 +128,14 @@ def run_migrations() -> None:
     command.upgrade(alembic_cfg, "head")
 
 
-def create_services(repository: SubscriptionRepository) -> Services:
+def create_services(
+    repository: SubscriptionRepository, job_repository: JobRepository
+) -> Services:
     """Create all application services with proper dependency wiring.
 
     Args:
         repository: Repository for subscription database operations.
+        job_repository: Repository for saving jobs across restarts.
 
     Returns:
         Services container with all application services.
@@ -154,6 +157,7 @@ def create_services(repository: SubscriptionRepository) -> Services:
         clock=lambda: datetime.now(settings.timezone),
         id_generator=lambda: str(uuid.uuid4()),
         event_bus=job_event_bus,
+        repository=job_repository,
     )
 
     # Pace every YouTube Music API call made by this process
@@ -249,9 +253,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Create services with database repository
     repository = SubscriptionRepository(engine)
-    services = create_services(repository)
+    services = create_services(repository, JobRepository(engine))
     app.state.services = services
     logger.info("Services initialized")
+
+    # Pick up the queue from before the restart
+    waiting = services.job_store.restore()
+    if waiting:
+        logger.info("Resuming %d job(s) from before the restart", waiting)
+        services.job_executor.resume_queue()
 
     # Start scheduler
     services.scheduler.start()
@@ -259,6 +269,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     yield
 
     # Shutdown sequence
+    # Keep the saved queue as it is, cancelling below must not end up in it
+    services.job_store.stop_persisting()
+
     # Stop scheduler first
     await services.scheduler.stop()
 

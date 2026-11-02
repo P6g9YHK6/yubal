@@ -1,4 +1,4 @@
-"""In-memory job store with thread-safe operations."""
+"""Job store with thread-safe operations, optionally saved to the database."""
 
 import logging
 import threading
@@ -8,8 +8,11 @@ from contextlib import contextmanager
 from datetime import datetime
 from uuid import UUID
 
+from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from yubal import AudioCodec, PhaseStats
 
+from yubal_api.db.job_repository import JobRepository
 from yubal_api.domain.enums import JobSource, JobStatus
 from yubal_api.domain.job import ContentInfo, Job
 from yubal_api.domain.types import Clock, IdGenerator
@@ -19,11 +22,16 @@ logger = logging.getLogger(__name__)
 
 
 class JobStore:
-    """In-memory job store with capacity limit and FIFO queue semantics.
+    """Job store with capacity limit and FIFO queue semantics.
 
     Thread-Safety:
         All public methods are thread-safe using a single lock. Operations are
-        synchronous since they only involve in-memory data structures.
+        synchronous since memory is the source of truth while running.
+
+    Persistence:
+        With a repository, jobs are written through to the database and read
+        back by `restore` after a restart. A failed write is logged and the job
+        carries on, losing the queue on a restart beats failing a download.
 
     Responsibilities:
         - Job persistence (CRUD operations)
@@ -42,7 +50,11 @@ class JobStore:
     MAX_JOBS = 200
 
     def __init__(
-        self, clock: Clock, id_generator: IdGenerator, event_bus: JobEventBus
+        self,
+        clock: Clock,
+        id_generator: IdGenerator,
+        event_bus: JobEventBus,
+        repository: JobRepository | None = None,
     ) -> None:
         """Initialize the job store.
 
@@ -50,6 +62,7 @@ class JobStore:
             clock: Function returning current datetime (enables testing).
             id_generator: Function generating unique job IDs.
             event_bus: Event bus for emitting job state change events.
+            repository: Optional repository to save jobs across restarts.
         """
         self._clock = clock
         self._id_generator = id_generator
@@ -57,6 +70,58 @@ class JobStore:
         self._jobs: OrderedDict[str, Job] = OrderedDict()
         self._lock = threading.Lock()
         self._active_job_id: str | None = None
+        self._repository = repository
+        self._positions: dict[str, int] = {}
+        self._next_position = 0
+
+    # -------------------------------------------------------------------------
+    # Public API: Persistence
+    # -------------------------------------------------------------------------
+
+    def restore(self) -> int:
+        """Load saved jobs back into the store. Call once on startup.
+
+        Queue order and finished jobs are kept as they were. A job that was
+        running when the app stopped goes back to pending in its old position,
+        so it starts first and skips whatever it already downloaded.
+
+        Returns:
+            Number of jobs waiting to run.
+        """
+        if self._repository is None:
+            return 0
+
+        with self._locked():
+            for record in self._repository.list():
+                try:
+                    job = Job.model_validate_json(record.data)
+                except ValidationError:
+                    logger.warning("Dropping unreadable saved job %s", record.id[:8])
+                    self._repository.delete(record.id)
+                    continue
+
+                if not job.status.is_finished and job.status != JobStatus.PENDING:
+                    job.status = JobStatus.PENDING
+                    job.progress = 0.0
+                    job.started_at = None
+                    self._repository.save(
+                        job.id, record.position, job.model_dump_json()
+                    )
+
+                self._jobs[job.id] = job
+                self._positions[job.id] = record.position
+                self._next_position = record.position + 1
+
+            return sum(not job.status.is_finished for job in self._jobs.values())
+
+    def stop_persisting(self) -> None:
+        """Stop writing to the database. Call first thing on shutdown.
+
+        Shutting down cancels the running job, and that must not be saved as
+        its status or it wouldn't resume on the next start.
+        """
+        with self._locked():
+            self._repository = None
 
     # -------------------------------------------------------------------------
     # Public API: Job lifecycle
@@ -99,6 +164,9 @@ class JobStore:
                 source=source,
             )
             self._jobs[job.id] = job
+            self._positions[job.id] = self._next_position
+            self._next_position += 1
+            self._persist(job)
 
             if should_start:
                 self._active_job_id = job.id
@@ -126,6 +194,17 @@ class JobStore:
         """
         with self._locked():
             return list(self._jobs.values())
+
+    def unfinished_urls(self) -> set[str]:
+        """Get the URLs of all jobs that are queued or running.
+
+        Returns:
+            Set of URLs with a job that hasn't finished.
+        """
+        with self._locked():
+            return {
+                job.url for job in self._jobs.values() if not job.status.is_finished
+            }
 
     def delete(self, job_id: str) -> bool:
         """Delete a finished job.
@@ -199,6 +278,15 @@ class JobStore:
             if job.status.is_finished:
                 return job
 
+            # Progress alone isn't saved: it comes for every track and a resumed
+            # job starts over anyway
+            should_persist = (
+                status != job.status
+                or content_info is not None
+                or download_stats is not None
+                or started_at is not None
+            )
+
             self._apply_updates(
                 job,
                 status=status,
@@ -207,6 +295,8 @@ class JobStore:
                 download_stats=download_stats,
                 started_at=started_at,
             )
+            if should_persist:
+                self._persist(job)
             self._event_bus.emit_updated(job)
             return job
 
@@ -235,6 +325,7 @@ class JobStore:
 
             job.status = JobStatus.CANCELLED
             job.completed_at = self._clock()
+            self._persist(job)
             self._event_bus.emit_updated(job)
             return True
 
@@ -310,9 +401,34 @@ class JobStore:
         """
         try:
             del self._jobs[job_id]
-            return True
         except KeyError:
             return False
+
+        self._positions.pop(job_id, None)
+        if self._repository is not None:
+            try:
+                self._repository.delete(job_id)
+            except SQLAlchemyError:
+                logger.exception("Could not delete saved job %s", job_id[:8])
+        return True
+
+    def _persist(self, job: Job) -> None:
+        """Save a job to the database, if one is configured.
+
+        Note:
+            Must be called with lock held.
+
+        Args:
+            job: The job to save.
+        """
+        if self._repository is None:
+            return
+        try:
+            self._repository.save(
+                job.id, self._positions[job.id], job.model_dump_json()
+            )
+        except SQLAlchemyError:
+            logger.exception("Could not save job %s", job.id[:8])
 
     def _iter_finished(self) -> Iterator[Job]:
         """Iterate over finished jobs.

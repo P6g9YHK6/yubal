@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy.engine import Engine
 from sqlmodel import SQLModel, create_engine
+from yubal_api.db.job_repository import JobRepository
 from yubal_api.db.subscription_repository import SubscriptionRepository
 
 # =============================================================================
@@ -33,6 +34,12 @@ def engine() -> Generator[Engine, None, None]:
 def repository(engine: Engine) -> SubscriptionRepository:
     """Create repository with test engine."""
     return SubscriptionRepository(engine)
+
+
+@pytest.fixture
+def job_repository(engine: Engine) -> JobRepository:
+    """Create job repository with test engine."""
+    return JobRepository(engine)
 
 
 # =============================================================================

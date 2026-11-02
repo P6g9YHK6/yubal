@@ -113,6 +113,7 @@ class JobExecutor:
         self._background_tasks: set[asyncio.Task[Any]] = set()
         # Map job_id -> CancelToken for cancellation support
         self._cancel_tokens: dict[str, CancelToken] = {}
+        self._shutting_down = False
 
     def create_and_start_job(
         self,
@@ -186,15 +187,24 @@ class JobExecutor:
         return True
 
     def cancel_all_jobs(self) -> int:
-        """Cancel all running jobs. Used during shutdown.
+        """Cancel all running jobs and stop starting new ones. Used during shutdown.
 
         Returns:
             Number of jobs that were signalled for cancellation.
         """
+        self._shutting_down = True
         tokens = list(self._cancel_tokens.values())
         for token in tokens:
             token.cancel()
         return len(tokens)
+
+    def unfinished_job_urls(self) -> set[str]:
+        """Get the URLs of all jobs that are queued or running."""
+        return self._job_store.unfinished_urls()
+
+    def resume_queue(self) -> None:
+        """Start the queue left over from before a restart."""
+        self._start_next_pending()
 
     async def _run_job(
         self,
@@ -363,5 +373,7 @@ class JobExecutor:
 
     def _start_next_pending(self) -> None:
         """Start the next pending job if any."""
+        if self._shutting_down:
+            return
         if next_job := self._job_store.pop_next_pending():
             self.start_job(next_job)
