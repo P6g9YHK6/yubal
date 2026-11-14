@@ -8,6 +8,8 @@ members = ["packages/*"]
 
 [tool.uv.sources]
 yubal = { workspace = true }
+# pinned for the get_artist promo carousel fix (sigma67/ytmusicapi#1031), drop once released
+ytmusicapi = { git = "https://github.com/sigma67/ytmusicapi", rev = "86fcd17ee3ff0d19bc807558d4e1a637df395143" }
 
 [dependency-groups]
 dev = [
