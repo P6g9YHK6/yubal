@@ -181,6 +181,12 @@ class Settings(BaseSettings):
     notify_level: LogLevel = Field(
         default="ERROR", description="Lowest log level sent as a notification"
     )
+    notify_digest_hours: float = Field(
+        default=24,
+        ge=0,
+        description="Bundle notifications into one message per this many hours, "
+        "0 sends each one right away",
+    )
 
     # Timezone
     tz: Timezone = Field(default="UTC", description="Timezone for timestamps")

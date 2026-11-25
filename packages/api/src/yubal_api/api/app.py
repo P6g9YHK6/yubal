@@ -11,7 +11,6 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from importlib.metadata import version
 from importlib.resources import files
-from logging.handlers import QueueListener
 from pathlib import Path
 from typing import Any
 
@@ -56,7 +55,7 @@ from yubal_api.services.job_executor import JobExecutor
 from yubal_api.services.job_store import JobStore
 from yubal_api.services.library_sync_service import LibrarySyncService
 from yubal_api.services.log_buffer import BufferHandler, LogBuffer
-from yubal_api.services.notify import setup_notifications
+from yubal_api.services.notify import Notifications, setup_notifications
 from yubal_api.services.playlist_info_service import PlaylistInfoService
 from yubal_api.services.scheduler import Scheduler
 from yubal_api.services.shutdown_coordinator import ShutdownCoordinator
@@ -65,7 +64,7 @@ from yubal_api.settings import get_settings
 
 # Global reference for shutdown suppression
 _rich_console: Console | None = None
-_notify_listener: QueueListener | None = None
+_notifications: Notifications | None = None
 
 
 def setup_logging() -> None:
@@ -102,27 +101,28 @@ def setup_log_streaming(log_buffer: LogBuffer) -> None:
 
 def setup_error_notifications() -> None:
     """Send error logs to the services listed in YUBAL_NOTIFY_URLS."""
-    global _notify_listener
+    global _notifications
 
     settings = get_settings()
     if not settings.notify_urls.strip():
         return
 
-    _notify_listener = setup_notifications(
+    _notifications = setup_notifications(
         settings.notify_urls,
         settings.notify_level,
         # uvicorn.error doesn't propagate to root
         [logging.root, logging.getLogger("uvicorn.error")],
+        digest_hours=settings.notify_digest_hours,
     )
 
 
 def stop_error_notifications() -> None:
     """Flush pending notifications and stop the sender thread."""
-    global _notify_listener
+    global _notifications
 
-    if _notify_listener:
-        _notify_listener.stop()
-        _notify_listener = None
+    if _notifications:
+        _notifications.stop()
+        _notifications = None
 
 
 def suppress_logging() -> None:
@@ -272,8 +272,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler for startup/shutdown."""
     settings = get_settings()
     logger.info("Starting application...")
-    if _notify_listener:
-        logger.info("Error notifications enabled (level >= %s)", settings.notify_level)
+    if _notifications:
+        logger.info(
+            "Error notifications enabled (level >= %s, %s)",
+            settings.notify_level,
+            f"digest every {settings.notify_digest_hours:g}h"
+            if settings.notify_digest_hours
+            else "sent right away",
+        )
 
     # Run database migrations (in thread to avoid blocking event loop)
     await asyncio.to_thread(run_migrations)

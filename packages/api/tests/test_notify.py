@@ -6,7 +6,11 @@ from unittest.mock import MagicMock
 
 import apprise
 import pytest
-from yubal_api.services.notify import NotifyHandler, setup_notifications
+from yubal_api.services.notify import (
+    Notifications,
+    NotifyHandler,
+    setup_notifications,
+)
 
 
 def _error_record() -> logging.LogRecord:
@@ -83,3 +87,70 @@ class TestSetupNotifications:
         body = sent.call_args.kwargs["body"]
         assert "job crashed" in body
         assert "RuntimeError: bad" in body
+
+
+class TestDigest:
+    def _setup(
+        self, monkeypatch: pytest.MonkeyPatch, name: str
+    ) -> tuple[MagicMock, logging.Logger, Notifications]:
+        sent = MagicMock()
+        monkeypatch.setattr(apprise.Apprise, "notify", sent)
+        logger = logging.getLogger(name)
+        logger.propagate = False
+        notifications = setup_notifications(
+            "gotify://gotify.example.com/abcdefghijklmno",
+            "ERROR",
+            [logger],
+            digest_hours=24,
+        )
+        assert notifications is not None
+        return sent, logger, notifications
+
+    def test_groups_records_into_one_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sent, logger, notifications = self._setup(monkeypatch, "yubal.test.digest")
+        try:
+            for job in ("aaaa", "bbbb", "cccc", "dddd"):
+                logger.error("Job %s failed: %s", job, "cookies expired")
+            try:
+                raise RuntimeError("bad")
+            except RuntimeError:
+                logger.exception("Sync failed")
+            sent.assert_not_called()
+        finally:
+            notifications.stop()
+            logger.handlers.clear()
+
+        sent.assert_called_once()
+        kwargs = sent.call_args.kwargs
+        assert kwargs["title"].startswith("yubal: 5 problems since ")
+        assert kwargs["notify_type"] == apprise.NotifyType.FAILURE
+        body = kwargs["body"]
+        assert "4x ERROR in yubal.test.digest" in body
+        assert "Job aaaa failed: cookies expired" in body
+        assert "Job cccc failed" in body
+        assert "Job dddd failed" not in body
+        assert "(and 1 more)" in body
+        assert "1x ERROR in yubal.test.digest\n  Sync failed" in body
+        assert "Traceback" not in body
+
+    def test_nothing_sent_without_records(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        sent, logger, notifications = self._setup(monkeypatch, "yubal.test.quiet")
+        notifications.stop()
+        logger.handlers.clear()
+        sent.assert_not_called()
+
+    def test_per_track_errors_not_sent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        sent, logger, notifications = self._setup(monkeypatch, "yubal.test.track")
+        track_logger = logging.getLogger("yubal.services.download_service")
+        track_logger.addHandler(logger.handlers[0])
+        try:
+            track_logger.error("Track '%s' failed: %s", "Song", "unavailable")
+        finally:
+            notifications.stop()
+            track_logger.removeHandler(logger.handlers[0])
+            logger.handlers.clear()
+        sent.assert_not_called()

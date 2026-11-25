@@ -14,11 +14,13 @@ from yubal_api.domain.enums import JobSource, JobStatus, ProgressStep
 from yubal_api.domain.job import ContentInfo, Job
 from yubal_api.services.protocols import JobExecutionStore
 from yubal_api.services.subscription_service import SubscriptionService
-from yubal_api.services.sync_service import SyncService
+from yubal_api.services.sync_service import SyncResult, SyncService
 
 logger = logging.getLogger(__name__)
 
 PROGRESS_COMPLETE = 100.0
+# Failed tracks named in a job's error summary, the rest are only counted
+MAX_LISTED_FAILURES = 20
 
 
 class JobExecutor:
@@ -308,6 +310,8 @@ class JobExecutor:
                         content_info=result.content_info,
                         download_stats=result.download_stats,
                     )
+                    if result.failed_tracks:
+                        self._log_failed_tracks(url, result)
                     # Update subscription metadata with latest info from YouTube Music
                     if (
                         self._subscription_service
@@ -353,6 +357,28 @@ class JobExecutor:
             # This ensures no concurrent downloads
             self._job_store.release_active(job_id)
             self._start_next_pending()
+
+    @staticmethod
+    def _log_failed_tracks(url: str, result: SyncResult) -> None:
+        """Log one error for the whole job instead of one per track.
+
+        The download service already logs each failure, but only this summary
+        is meant for notifications so a bad album doesn't send dozens.
+        """
+        failed = result.failed_tracks
+        name = result.content_info.title if result.content_info else None
+        stats = result.download_stats
+        total = f" of {stats.total}" if stats else ""
+        lines = [f"- {track}" for track in failed[:MAX_LISTED_FAILURES]]
+        if len(failed) > MAX_LISTED_FAILURES:
+            lines.append(f"- and {len(failed) - MAX_LISTED_FAILURES} more")
+        logger.error(
+            "%s: %d%s tracks failed\n%s",
+            name or url,
+            len(failed),
+            total,
+            "\n".join(lines),
+        )
 
     @staticmethod
     def _step_to_status(step: ProgressStep) -> JobStatus:

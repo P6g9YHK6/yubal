@@ -164,12 +164,15 @@ docker compose up -d
 | `YUBAL_LIKED_PLAYLIST_PREFIX` | Prefix for Liked Music, Quick picks and Discover Mix (e.g. `1_`) | (none)           |
 | `YUBAL_NOTIFY_URLS`           | [Apprise] URLs for error alerts, comma separated                 | (unset)          |
 | `YUBAL_NOTIFY_LEVEL`          | Lowest log level sent as a notification                          | `ERROR`          |
+| `YUBAL_NOTIFY_DIGEST_HOURS`   | Hours between notification digests, `0` sends each right away    | `24`             |
 
 Auto-add requires authenticated [cookies](#-cookies-optional): it scans your YouTube Music library on each sync cycle. So does `YUBAL_QUICK_PICKS`, which subscribes to the Quick picks of your home page; the playlist follows whatever they are at each sync.
 
 `YUBAL_AUTO_DELETE` runs before each scheduled sync and deletes downloaded tracks (and their lyrics) that no M3U in `_Playlists` lists anymore, so a song removed from all your playlists, albums and artists goes away. It needs the three M3U options on, waits until the previous sync is done, and refuses to delete anything when more than 20% of the library would go. Files you put in the library folder yourself count as unlisted too.
 
 Notifications go through [Apprise](https://github.com/caronc/apprise/wiki), so any service it supports works, for example `gotify://host/token`, `notifiarr://apikey`, `ntfy://topic` or `discord://webhook_id/webhook_token`.
+
+By default problems are bundled into one message per day, grouped by kind with a count and a few examples; nothing is sent on a quiet day. Set `YUBAL_NOTIFY_DIGEST_HOURS=0` to get each one as it happens. A job with failed tracks sends a single message listing them rather than one per track.
 
 [Apprise]: https://github.com/caronc/apprise/wiki
 

@@ -328,6 +328,10 @@ class TestNotify:
         settings = _create_settings()
         assert settings.notify_urls == ""
         assert settings.notify_level == "ERROR"
+        assert settings.notify_digest_hours == 24
+
+    def test_digest_can_be_turned_off(self) -> None:
+        assert _create_settings(notify_digest_hours=0).notify_digest_hours == 0
 
     def test_level_is_case_insensitive(self) -> None:
         assert _create_settings(notify_level="warning").notify_level == "WARNING"

@@ -1,13 +1,14 @@
 """Tests for JobExecutor timeout enforcement."""
 
+import logging
 import time
 from typing import Any
 from uuid import UUID
 
 import pytest
-from yubal import AudioCodec
+from yubal import AudioCodec, PhaseStats
 from yubal_api.domain.enums import JobSource, JobStatus, ProgressStep
-from yubal_api.domain.job import Job
+from yubal_api.domain.job import ContentInfo, Job
 from yubal_api.services.job_executor import JobExecutor
 from yubal_api.services.sync_service import SyncResult, SyncService
 
@@ -240,3 +241,31 @@ class TestExecutorAudioQuality:
         await executor._run_job("test-job", "https://example.com")
 
         assert captured_quality == [0]
+
+
+class TestFailedTracksSummary:
+    def _result(self, failed: int) -> SyncResult:
+        return SyncResult(
+            success=True,
+            content_info=ContentInfo(title="Some Album", artist="Some Band"),
+            download_stats=PhaseStats(success=30 - failed, failed=failed),
+            failed_tracks=[f"Some Band - Song {i}: unavailable" for i in range(failed)],
+        )
+
+    def test_one_error_lists_the_tracks(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.ERROR, "yubal_api.services.job_executor"):
+            JobExecutor._log_failed_tracks("https://example.com", self._result(2))
+
+        assert len(caplog.records) == 1
+        message = caplog.records[0].getMessage()
+        assert message.startswith("Some Album: 2 of 30 tracks failed\n")
+        assert "- Some Band - Song 1: unavailable" in message
+
+    def test_long_list_is_cut(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level(logging.ERROR, "yubal_api.services.job_executor"):
+            JobExecutor._log_failed_tracks("https://example.com", self._result(25))
+
+        message = caplog.records[0].getMessage()
+        assert "- Some Band - Song 19: unavailable" in message
+        assert "Song 20" not in message
+        assert message.endswith("- and 5 more")

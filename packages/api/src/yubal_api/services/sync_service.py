@@ -111,6 +111,7 @@ class SyncResult:
         download_stats: Statistics from the download phase.
         destination: Path to the directory containing downloaded files.
         error: Error message if the operation failed.
+        failed_tracks: "Artist - Title: reason" for each track that failed.
     """
 
     success: bool
@@ -118,6 +119,15 @@ class SyncResult:
     download_stats: PhaseStats | None = None
     destination: str | None = None
     error: str | None = None
+    failed_tracks: list[str] = field(default_factory=list)
+
+
+def _failed_tracks(results: list[DownloadResult]) -> list[str]:
+    return [
+        f"{r.track.artist} - {r.track.title}: {r.error or 'unknown error'}"
+        for r in results
+        if r.status == DownloadStatus.FAILED
+    ]
 
 
 # -----------------------------------------------------------------------------
@@ -666,6 +676,7 @@ class _SyncWorkflow(_WorkflowBase):
             content_info=self.content_info,
             download_stats=result.download_stats,
             destination=destination,
+            failed_tracks=_failed_tracks(result.download_results),
         )
 
 
@@ -835,6 +846,7 @@ class _ArtistSyncWorkflow(_WorkflowBase):
             content_info=self.content_info,
             download_stats=_merge_phase_stats(stats_list),
             destination=self._combine_destinations(destinations),
+            failed_tracks=_failed_tracks(all_results),
         )
 
     def _write_artist_artifacts(self, results: list[DownloadResult]) -> None:
