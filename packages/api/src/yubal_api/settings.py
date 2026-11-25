@@ -118,6 +118,9 @@ class Settings(BaseSettings):
     artist_m3u: bool = Field(
         default=True, description="Write one M3U per artist covering the discography"
     )
+    liked_playlist_prefix: str = Field(
+        default="", description="Prefix for the Liked Music playlist name"
+    )
 
     # ReplayGain settings
     replaygain: bool = Field(

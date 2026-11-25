@@ -261,6 +261,49 @@ class TestPlaylistArtifactsService:
         assert m3u_path.name == "Test Artist (Discography).m3u"
 
     @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_liked_music_gets_prefix(
+        self,
+        _mock_fetch: MagicMock,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should prefix Liked Music and rename the unprefixed file it wrote before."""
+        info = PlaylistInfo(
+            playlist_id="LM",
+            title="Liked Music",
+            cover_url="https://example.com/cover.jpg",
+            kind=ContentKind.PLAYLIST,
+        )
+        PlaylistArtifactsService().compose(tmp_path, info, download_results)
+
+        m3u_path, _ = PlaylistArtifactsService(liked_playlist_prefix="1_").compose(
+            tmp_path, info, download_results
+        )
+
+        assert m3u_path == tmp_path / "_Playlists" / "1_Liked Music.m3u"
+        assert "#PLAYLIST:1_Liked Music" in m3u_path.read_text()
+        assert sorted(f.name for f in (tmp_path / "_Playlists").iterdir()) == [
+            "1_Liked Music.jpg",
+            "1_Liked Music.m3u",
+        ]
+
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_prefix_only_for_liked_music(
+        self,
+        _mock_fetch: MagicMock,
+        playlist_info: PlaylistInfo,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+    ) -> None:
+        """Should leave other playlists alone when a prefix is set."""
+        m3u_path, _ = PlaylistArtifactsService(liked_playlist_prefix="1_").compose(
+            tmp_path, playlist_info, download_results
+        )
+
+        assert m3u_path is not None
+        assert m3u_path.name == "Test Playlist.m3u"
+
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
     def test_removes_legacy_suffixed_files(
         self,
         _mock_fetch: MagicMock,

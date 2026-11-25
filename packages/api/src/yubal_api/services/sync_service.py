@@ -288,6 +288,7 @@ class SyncService:
     playlist_m3u: bool = True
     album_m3u: bool = True
     artist_m3u: bool = True
+    liked_playlist_prefix: str = ""
     _codec: AudioCodec = field(init=False)
 
     def __post_init__(self) -> None:
@@ -339,6 +340,7 @@ class SyncService:
             playlist_m3u=self.playlist_m3u,
             album_m3u=self.album_m3u,
             artist_m3u=self.artist_m3u,
+            liked_playlist_prefix=self.liked_playlist_prefix,
         )
         return workflow.execute()
 
@@ -379,6 +381,7 @@ class _WorkflowBase:
     playlist_m3u: bool
     album_m3u: bool
     artist_m3u: bool
+    liked_playlist_prefix: str
 
     # Workflow state shared by both subclasses
     content_info: ContentInfo | None = field(default=None, init=False)
@@ -430,6 +433,7 @@ class _WorkflowBase:
             generate_m3u=True,
             skip_album_m3u=not self.album_m3u,
             skip_playlist_m3u=not self.playlist_m3u,
+            liked_playlist_prefix=self.liked_playlist_prefix,
             save_cover=True,
             max_items=max_items,
             apply_replaygain=self.apply_replaygain,

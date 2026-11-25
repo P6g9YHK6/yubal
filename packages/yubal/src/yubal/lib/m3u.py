@@ -21,6 +21,9 @@ PLAYLIST_ID_TAG = "#YUBAL-ID:"
 # YouTube Music gives every album release a playlist ID with this prefix.
 ALBUM_PLAYLIST_ID_PREFIX = "OLAK5uy_"
 
+# The signed-in user's "Liked Music" pseudo-playlist.
+LIKED_MUSIC_ID = "LM"
+
 
 def is_album_playlist_id(playlist_id: str) -> bool:
     """Return whether a playlist ID belongs to an album release."""

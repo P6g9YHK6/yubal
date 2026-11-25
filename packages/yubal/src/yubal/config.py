@@ -69,6 +69,7 @@ class PlaylistDownloadConfig:
         save_cover: Whether to save playlist cover image.
         skip_album_m3u: Skip M3U generation for album playlists.
         skip_playlist_m3u: Skip M3U generation for regular playlists.
+        liked_playlist_prefix: Prepended to the Liked Music playlist name.
         max_items: Maximum number of tracks to download.
         apply_replaygain: Whether to apply ReplayGain tags using rsgain.
         cache_path: Directory for extraction cache. None disables caching.
@@ -79,6 +80,7 @@ class PlaylistDownloadConfig:
     save_cover: bool = True
     skip_album_m3u: bool = True
     skip_playlist_m3u: bool = False
+    liked_playlist_prefix: str = ""
     max_items: int | None = None
     apply_replaygain: bool = True
     cache_path: Path | None = None

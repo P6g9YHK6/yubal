@@ -217,6 +217,7 @@ def create_services(
         playlist_m3u=settings.playlist_m3u,
         album_m3u=settings.album_m3u,
         artist_m3u=settings.artist_m3u,
+        liked_playlist_prefix=settings.liked_playlist_prefix,
         subscription_service=subscription_service,
         cache_path=settings.cache_path,
         job_timeout=settings.job_timeout_seconds,

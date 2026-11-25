@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import NamedTuple, Protocol
 
 from yubal.lib.m3u import (
+    LIKED_MUSIC_ID,
     is_album_playlist_id,
     read_m3u_playlist_id,
     resolve_playlist_stem,
@@ -81,8 +82,11 @@ class PlaylistArtifactsService:
         >>> artifacts.cover  # Path or None
     """
 
-    def __init__(self, *, ascii_filenames: bool = False) -> None:
+    def __init__(
+        self, *, ascii_filenames: bool = False, liked_playlist_prefix: str = ""
+    ) -> None:
         self._ascii_filenames = ascii_filenames
+        self._liked_playlist_prefix = liked_playlist_prefix
 
     # ============================================================================
     # PUBLIC API - Main entry point for playlist artifact generation
@@ -165,9 +169,8 @@ class PlaylistArtifactsService:
     # NAMING - What players show as the playlist title
     # ============================================================================
 
-    @staticmethod
     def _display_name(
-        playlist_info: PlaylistInfo, results: list[DownloadResult]
+        self, playlist_info: PlaylistInfo, results: list[DownloadResult]
     ) -> str:
         """Name the playlist the way it should read in a player.
 
@@ -175,8 +178,11 @@ class PlaylistArtifactsService:
         apart, and a discography is marked so it doesn't look like a
         self-titled album. An album ID counts as an album even when the
         extractor filed it as a playlist because it couldn't match every track.
+        Liked Music gets the configured prefix so it can sort first.
         """
         title = playlist_info.title or "Untitled Playlist"
+        if playlist_info.playlist_id == LIKED_MUSIC_ID:
+            return f"{self._liked_playlist_prefix}{title}"
         if playlist_info.kind == ContentKind.ARTIST:
             return f"{title} (Discography)"
         if playlist_info.kind == ContentKind.ALBUM or is_album_playlist_id(

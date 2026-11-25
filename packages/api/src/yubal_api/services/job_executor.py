@@ -59,6 +59,7 @@ class JobExecutor:
         playlist_m3u: bool = True,
         album_m3u: bool = True,
         artist_m3u: bool = True,
+        liked_playlist_prefix: str = "",
         subscription_service: SubscriptionService | None = None,
         cache_path: Path | None = None,
         job_timeout: float = 1800,
@@ -83,6 +84,7 @@ class JobExecutor:
             playlist_m3u: Whether to write M3U files for playlists.
             album_m3u: Whether to write M3U files for albums.
             artist_m3u: Whether to write one M3U per artist discography.
+            liked_playlist_prefix: Prepended to the Liked Music playlist name.
             subscription_service: Optional service to update subscription metadata.
             cache_path: Optional directory for extraction cache.
             job_timeout: Seconds a job may go without progress before it is
@@ -105,6 +107,7 @@ class JobExecutor:
         self._playlist_m3u = playlist_m3u
         self._album_m3u = album_m3u
         self._artist_m3u = artist_m3u
+        self._liked_playlist_prefix = liked_playlist_prefix
         self._subscription_service = subscription_service
         self._cache_path = cache_path
         self._job_timeout = job_timeout
@@ -284,6 +287,7 @@ class JobExecutor:
                     self._playlist_m3u,
                     self._album_m3u,
                     self._artist_m3u,
+                    self._liked_playlist_prefix,
                 )
                 result = await asyncio.to_thread(
                     sync_service.run,

@@ -22,6 +22,7 @@ from yubal.exceptions import (
     UpstreamAPIError,
     YubalError,
 )
+from yubal.lib.m3u import LIKED_MUSIC_ID
 from yubal.models.enums import SkipReason
 from yubal.models.ytmusic import (
     Album,
@@ -56,7 +57,7 @@ _LIBRARY_FETCH_LIMIT = 1000
 # Special playlist ID for the user's "Liked Music" pseudo-playlist on
 # YouTube Music. Requires authentication and has no real title in the API
 # response, so we substitute a sensible default.
-_LIKED_MUSIC_ID = "LM"
+_LIKED_MUSIC_ID = LIKED_MUSIC_ID
 _LIKED_MUSIC_TITLE = "Liked Music"
 
 

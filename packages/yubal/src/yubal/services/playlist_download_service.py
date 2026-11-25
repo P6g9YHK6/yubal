@@ -114,6 +114,7 @@ class PlaylistDownloadService:
         )
         self._composer = composer or PlaylistArtifactsService(
             ascii_filenames=config.download.ascii_filenames,
+            liked_playlist_prefix=config.liked_playlist_prefix,
         )
         self._replaygain = replaygain or ReplayGainService()
         self._cache = ExtractionCache(config.cache_path) if config.cache_path else None

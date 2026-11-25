@@ -143,24 +143,25 @@ docker compose up -d
 <details>
 <summary>All options</summary>
 
-| Variable                   | Description                                        | Default (Docker) |
-| -------------------------- | -------------------------------------------------- | ---------------- |
-| `YUBAL_HOST`               | Server bind address                                | `127.0.0.1`      |
-| `YUBAL_PORT`               | Server port                                        | `8000`           |
-| `YUBAL_DATA`               | Music library output                               | `/app/data`      |
-| `YUBAL_CONFIG`             | Config directory                                   | `/app/config`    |
-| `YUBAL_LOG_LEVEL`          | `DEBUG`, `INFO`, `WARNING`, `ERROR`                | `INFO`           |
-| `YUBAL_ASCII_FILENAMES`    | Transliterate unicode to ASCII                     | `false`          |
-| `YUBAL_CORS_ORIGINS`       | Allowed CORS origins                               | `["*"]`          |
-| `YUBAL_TEMP`               | Temp directory                                     | System temp      |
-| `YUBAL_AUTO_ADD_PLAYLISTS` | Auto-add saved library playlists as subscriptions  | `false`          |
-| `YUBAL_AUTO_ADD_ARTISTS`   | Auto-add followed library artists as subscriptions | `false`          |
-| `YUBAL_AUTO_ADD_ALBUMS`    | Auto-add saved library albums as subscriptions     | `false`          |
-| `YUBAL_PLAYLIST_M3U`       | Write an M3U file for each synced playlist         | `true`           |
-| `YUBAL_ALBUM_M3U`          | Write an M3U for each album added on its own       | `true`           |
-| `YUBAL_ARTIST_M3U`         | Write one M3U per artist discography               | `true`           |
-| `YUBAL_NOTIFY_URLS`        | [Apprise] URLs for error alerts, comma separated   | (unset)          |
-| `YUBAL_NOTIFY_LEVEL`       | Lowest log level sent as a notification            | `ERROR`          |
+| Variable                      | Description                                          | Default (Docker) |
+| ----------------------------- | ---------------------------------------------------- | ---------------- |
+| `YUBAL_HOST`                  | Server bind address                                  | `127.0.0.1`      |
+| `YUBAL_PORT`                  | Server port                                          | `8000`           |
+| `YUBAL_DATA`                  | Music library output                                 | `/app/data`      |
+| `YUBAL_CONFIG`                | Config directory                                     | `/app/config`    |
+| `YUBAL_LOG_LEVEL`             | `DEBUG`, `INFO`, `WARNING`, `ERROR`                  | `INFO`           |
+| `YUBAL_ASCII_FILENAMES`       | Transliterate unicode to ASCII                       | `false`          |
+| `YUBAL_CORS_ORIGINS`          | Allowed CORS origins                                 | `["*"]`          |
+| `YUBAL_TEMP`                  | Temp directory                                       | System temp      |
+| `YUBAL_AUTO_ADD_PLAYLISTS`    | Auto-add saved library playlists as subscriptions    | `false`          |
+| `YUBAL_AUTO_ADD_ARTISTS`      | Auto-add followed library artists as subscriptions   | `false`          |
+| `YUBAL_AUTO_ADD_ALBUMS`       | Auto-add saved library albums as subscriptions       | `false`          |
+| `YUBAL_PLAYLIST_M3U`          | Write an M3U file for each synced playlist           | `true`           |
+| `YUBAL_ALBUM_M3U`             | Write an M3U for each album added on its own         | `true`           |
+| `YUBAL_ARTIST_M3U`            | Write one M3U per artist discography                 | `true`           |
+| `YUBAL_LIKED_PLAYLIST_PREFIX` | Prefix for the Liked Music playlist name (e.g. `1_`) | (none)           |
+| `YUBAL_NOTIFY_URLS`           | [Apprise] URLs for error alerts, comma separated     | (unset)          |
+| `YUBAL_NOTIFY_LEVEL`          | Lowest log level sent as a notification              | `ERROR`          |
 
 Auto-add requires authenticated [cookies](#-cookies-optional): it scans your YouTube Music library on each sync cycle.
 
