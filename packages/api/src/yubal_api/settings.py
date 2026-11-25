@@ -127,7 +127,8 @@ class Settings(BaseSettings):
         description="Keep a playlist synced with the home page's Quick picks",
     )
     liked_playlist_prefix: str = Field(
-        default="", description="Prefix for the Liked Music playlist name"
+        default="",
+        description="Prefix for Liked Music, Quick picks and Discover Mix names",
     )
 
     # ReplayGain settings

@@ -24,10 +24,28 @@ ALBUM_PLAYLIST_ID_PREFIX = "OLAK5uy_"
 # The signed-in user's "Liked Music" pseudo-playlist.
 LIKED_MUSIC_ID = "LM"
 
+# Made-up ID for the "Quick picks" shelf of the signed-in user's home page.
+QUICK_PICKS_ID = "QUICKPICKS"
+
+# Mixes YouTube Music builds per user ("My Supermix", "Discover Mix"...) share
+# this prefix, the rest of the ID differs per account. The Discover Mix can
+# only be told apart from the others by its title.
+PERSONAL_MIX_ID_PREFIX = "RDTMAK5uy_"
+DISCOVER_MIX_TITLE = "Discover Mix"
+
 
 def is_album_playlist_id(playlist_id: str) -> bool:
     """Return whether a playlist ID belongs to an album release."""
     return playlist_id.startswith(ALBUM_PLAYLIST_ID_PREFIX)
+
+
+def is_personal_playlist(playlist_id: str, title: str | None) -> bool:
+    """Return whether this is Liked Music, Quick picks or the Discover Mix."""
+    if playlist_id in (LIKED_MUSIC_ID, QUICK_PICKS_ID):
+        return True
+    return (
+        playlist_id.startswith(PERSONAL_MIX_ID_PREFIX) and title == DISCOVER_MIX_TITLE
+    )
 
 
 def read_m3u_playlist_id(m3u_path: Path) -> str | None:

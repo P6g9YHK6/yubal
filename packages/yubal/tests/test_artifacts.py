@@ -287,8 +287,38 @@ class TestPlaylistArtifactsService:
             "1_Liked Music.m3u",
         ]
 
+    @pytest.mark.parametrize(
+        ("playlist_id", "title", "expected"),
+        [
+            ("QUICKPICKS", "Quick picks", "1_Quick picks.m3u"),
+            ("RDTMAK5uy_abc123", "Discover Mix", "1_Discover Mix.m3u"),
+            ("RDTMAK5uy_abc123", "My Supermix", "My Supermix.m3u"),
+        ],
+    )
     @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
-    def test_prefix_only_for_liked_music(
+    def test_personal_playlists_get_prefix(
+        self,
+        _mock_fetch: MagicMock,
+        download_results: list[DownloadResult],
+        tmp_path: Path,
+        playlist_id: str,
+        title: str,
+        expected: str,
+    ) -> None:
+        """Should prefix Quick picks and the Discover Mix but not other mixes."""
+        info = PlaylistInfo(
+            playlist_id=playlist_id, title=title, kind=ContentKind.PLAYLIST
+        )
+
+        m3u_path, _ = PlaylistArtifactsService(liked_playlist_prefix="1_").compose(
+            tmp_path, info, download_results
+        )
+
+        assert m3u_path is not None
+        assert m3u_path.name == expected
+
+    @patch("yubal.utils.cover.fetch_cover", return_value=b"\xff\xd8")
+    def test_prefix_only_for_personal_playlists(
         self,
         _mock_fetch: MagicMock,
         playlist_info: PlaylistInfo,

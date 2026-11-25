@@ -22,7 +22,7 @@ from yubal.exceptions import (
     UpstreamAPIError,
     YubalError,
 )
-from yubal.lib.m3u import LIKED_MUSIC_ID
+from yubal.lib.m3u import LIKED_MUSIC_ID, QUICK_PICKS_ID
 from yubal.models.enums import SkipReason
 from yubal.models.ytmusic import (
     Album,
@@ -63,7 +63,6 @@ _LIKED_MUSIC_TITLE = "Liked Music"
 # Made-up playlist ID standing for the "Quick picks" shelf of the signed-in
 # user's home page. It has no real playlist behind it and changes every few
 # hours, so it is rebuilt from get_home() on each fetch.
-QUICK_PICKS_ID = "QUICKPICKS"
 QUICK_PICKS_URL = f"https://music.youtube.com/playlist?list={QUICK_PICKS_ID}"
 _QUICK_PICKS_TITLE = "Quick picks"
 # Home shelves to load, Quick picks is usually within the first five

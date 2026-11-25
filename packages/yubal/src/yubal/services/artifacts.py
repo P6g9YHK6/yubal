@@ -5,8 +5,8 @@ from pathlib import Path
 from typing import NamedTuple, Protocol
 
 from yubal.lib.m3u import (
-    LIKED_MUSIC_ID,
     is_album_playlist_id,
+    is_personal_playlist,
     read_m3u_playlist_id,
     resolve_playlist_stem,
     write_m3u,
@@ -178,10 +178,11 @@ class PlaylistArtifactsService:
         apart, and a discography is marked so it doesn't look like a
         self-titled album. An album ID counts as an album even when the
         extractor filed it as a playlist because it couldn't match every track.
-        Liked Music gets the configured prefix so it can sort first.
+        Liked Music, Quick picks and the Discover Mix get the configured
+        prefix so they can sort first.
         """
         title = playlist_info.title or "Untitled Playlist"
-        if playlist_info.playlist_id == LIKED_MUSIC_ID:
+        if is_personal_playlist(playlist_info.playlist_id, playlist_info.title):
             return f"{self._liked_playlist_prefix}{title}"
         if playlist_info.kind == ContentKind.ARTIST:
             return f"{title} (Discography)"
