@@ -118,6 +118,10 @@ class Settings(BaseSettings):
     artist_m3u: bool = Field(
         default=True, description="Write one M3U per artist covering the discography"
     )
+    auto_delete: bool = Field(
+        default=False,
+        description="Delete downloaded tracks that are no longer in any playlist",
+    )
     liked_playlist_prefix: str = Field(
         default="", description="Prefix for the Liked Music playlist name"
     )

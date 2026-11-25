@@ -64,7 +64,12 @@ from yubal.models.results import (
 from yubal.models.track import PlaylistInfo, TrackMetadata
 from yubal.services import MetadataExtractorService, PlaylistDownloadService
 from yubal.services.download_service import DownloadService as _DownloadService
-from yubal.utils import cleanup_part_files, clear_cover_cache, fetch_cover
+from yubal.utils import (
+    cleanup_part_files,
+    clear_cover_cache,
+    fetch_cover,
+    remove_unreferenced_tracks,
+)
 from yubal.utils.url import (
     is_artist_url,
     is_single_track_url,
@@ -245,4 +250,5 @@ __all__ = [
     "is_supported_url",
     "parse_channel_id",
     "parse_playlist_id",
+    "remove_unreferenced_tracks",
 ]

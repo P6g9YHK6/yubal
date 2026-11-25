@@ -1,7 +1,8 @@
 """Tests for the scheduler service."""
 
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
@@ -229,3 +230,70 @@ class TestSkipsQueuedSubscriptions:
 
         assert scheduler.sync_subscription(uuid4()) == "job-12345"
         assert self._created_urls(job_executor) == ["https://example.com/queued"]
+
+
+class TestAutoDelete:
+    """Tests for deleting tracks no playlist lists before a scheduled sweep."""
+
+    @pytest.fixture
+    def setup(self, mock_settings: MagicMock) -> tuple[Scheduler, MagicMock]:
+        mock_settings.auto_delete = True
+        mock_settings.playlist_m3u = True
+        mock_settings.album_m3u = True
+        mock_settings.artist_m3u = True
+        mock_settings.data = Path("/music")
+        subscription_service = MagicMock()
+        subscription_service.list.return_value = []
+        job_executor = MagicMock()
+        job_executor.unfinished_job_urls.return_value = set()
+        scheduler = Scheduler(subscription_service, job_executor, mock_settings)
+        return scheduler, job_executor
+
+    def test_deletes_when_enabled_and_idle(
+        self, setup: tuple[Scheduler, MagicMock]
+    ) -> None:
+        scheduler, _ = setup
+        with patch("yubal_api.services.scheduler.remove_unreferenced_tracks") as rm:
+            scheduler._run_auto_delete()
+        rm.assert_called_once_with(Path("/music"))
+
+    def test_off_by_default(
+        self, setup: tuple[Scheduler, MagicMock], mock_settings: MagicMock
+    ) -> None:
+        scheduler, _ = setup
+        mock_settings.auto_delete = False
+        with patch("yubal_api.services.scheduler.remove_unreferenced_tracks") as rm:
+            scheduler._run_auto_delete()
+        rm.assert_not_called()
+
+    def test_skipped_while_jobs_are_queued(
+        self, setup: tuple[Scheduler, MagicMock]
+    ) -> None:
+        scheduler, job_executor = setup
+        job_executor.unfinished_job_urls.return_value = {"https://x"}
+        with patch("yubal_api.services.scheduler.remove_unreferenced_tracks") as rm:
+            scheduler._run_auto_delete()
+        rm.assert_not_called()
+
+    def test_skipped_when_an_m3u_kind_is_off(
+        self, setup: tuple[Scheduler, MagicMock], mock_settings: MagicMock
+    ) -> None:
+        scheduler, _ = setup
+        mock_settings.album_m3u = False
+        with patch("yubal_api.services.scheduler.remove_unreferenced_tracks") as rm:
+            scheduler._run_auto_delete()
+        rm.assert_not_called()
+
+    def test_failure_does_not_raise(self, setup: tuple[Scheduler, MagicMock]) -> None:
+        scheduler, _ = setup
+        with patch(
+            "yubal_api.services.scheduler.remove_unreferenced_tracks",
+            side_effect=OSError("share gone"),
+        ):
+            scheduler._run_auto_delete()
+
+    def test_not_on_manual_sync_all(self, setup: tuple[Scheduler, MagicMock]) -> None:
+        scheduler, _ = setup
+        with patch("yubal_api.services.scheduler.remove_unreferenced_tracks") as rm:
+            scheduler.sync_all()
+        rm.assert_not_called()

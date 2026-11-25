@@ -54,6 +54,7 @@ def mock_settings() -> MagicMock:
     settings.scheduler_enabled = True
     settings.scheduler_cron = "0 0 * * *"
     settings.timezone = ZoneInfo("UTC")
+    settings.auto_delete = False
     return settings
 
 

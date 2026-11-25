@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from croniter import croniter
+from yubal import remove_unreferenced_tracks
 
 from yubal_api.api.exceptions import SubscriptionNotFoundError
 from yubal_api.db.subscription import Subscription
@@ -183,8 +184,40 @@ class Scheduler:
         except Exception:
             logger.exception("Library auto-add scan failed")
 
+    def _run_auto_delete(self) -> None:
+        """Delete tracks the last sweep dropped from every playlist, if enabled.
+
+        Runs before the new sweep, so every M3U already reflects the previous
+        one. Skipped while jobs are still queued (a half-done sweep leaves
+        M3Us that don't agree yet) and when an M3U kind is turned off, as the
+        files only that kind lists would look unreferenced. Never raises.
+        """
+        settings = self._settings
+        if not settings.auto_delete:
+            return
+        if not (settings.playlist_m3u and settings.album_m3u and settings.artist_m3u):
+            logger.warning(
+                "Auto-delete skipped: it needs YUBAL_PLAYLIST_M3U, YUBAL_ALBUM_M3U "
+                "and YUBAL_ARTIST_M3U on to know which tracks are still wanted"
+            )
+            return
+        if self._job_executor.unfinished_job_urls():
+            logger.info("Auto-delete skipped: the previous sync is still running")
+            return
+        try:
+            result = remove_unreferenced_tracks(settings.data)
+        except Exception:
+            logger.exception("Auto-delete failed")
+            return
+        if result.deleted:
+            logger.info(
+                "Auto-delete removed %d track(s) no playlist has anymore",
+                len(result.unreferenced),
+            )
+
     async def _sync_all_enabled(self) -> list[str]:
         """Sync all enabled subscriptions (async wrapper)."""
+        await asyncio.to_thread(self._run_auto_delete)
         self._run_library_scan()
         return self._create_jobs_for_subscriptions(
             self._without_queued(self._subscription_service.list(enabled=True))
