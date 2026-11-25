@@ -159,8 +159,14 @@ docker compose up -d
 | `YUBAL_PLAYLIST_M3U`       | Write an M3U file for each synced playlist         | `true`           |
 | `YUBAL_ALBUM_M3U`          | Write an M3U for each album added on its own       | `true`           |
 | `YUBAL_ARTIST_M3U`         | Write one M3U per artist discography               | `true`           |
+| `YUBAL_NOTIFY_URLS`        | [Apprise] URLs for error alerts, comma separated   | (unset)          |
+| `YUBAL_NOTIFY_LEVEL`       | Lowest log level sent as a notification            | `ERROR`          |
 
 Auto-add requires authenticated [cookies](#-cookies-optional): it scans your YouTube Music library on each sync cycle.
+
+Notifications go through [Apprise](https://github.com/caronc/apprise/wiki), so any service it supports works, for example `gotify://host/token`, `notifiarr://apikey`, `ntfy://topic` or `discord://webhook_id/webhook_token`.
+
+[Apprise]: https://github.com/caronc/apprise/wiki
 
 </details>
 

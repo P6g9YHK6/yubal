@@ -319,3 +319,15 @@ class TestM3uSettings:
         monkeypatch.setenv("YUBAL_ROOT", str(TEST_ROOT))
         monkeypatch.setenv(env, "false")
         assert getattr(Settings(), field) is False
+
+
+class TestNotify:
+    """Tests for notification settings."""
+
+    def test_disabled_by_default(self) -> None:
+        settings = _create_settings()
+        assert settings.notify_urls == ""
+        assert settings.notify_level == "ERROR"
+
+    def test_level_is_case_insensitive(self) -> None:
+        assert _create_settings(notify_level="warning").notify_level == "WARNING"

@@ -161,6 +161,15 @@ class Settings(BaseSettings):
         description="Kill a job after this many seconds without progress",
     )
 
+    # Notification settings
+    notify_urls: str = Field(
+        default="",
+        description="Apprise URLs for error notifications, comma separated",
+    )
+    notify_level: LogLevel = Field(
+        default="ERROR", description="Lowest log level sent as a notification"
+    )
+
     # Timezone
     tz: Timezone = Field(default="UTC", description="Timezone for timestamps")
 
