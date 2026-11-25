@@ -1,9 +1,10 @@
 """Keep yt-dlp up to date without rebuilding the image.
 
 YouTube changes break yt-dlp often and fixes ship as new releases, usually
-long before a new image would. New releases are unpacked into a folder in
-the config volume that is put in front of the bundled copy on startup, then
-the app restarts itself so the running process picks them up.
+long before a new image would. New releases are unpacked into a temp folder
+that is put in front of the bundled copy on startup, then the app restarts
+itself so the running process picks them up. The folder lives as long as the
+container, a recreated one starts from the bundled copy again.
 See overlay_env for how the folder gets in front.
 """
 

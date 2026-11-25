@@ -232,8 +232,12 @@ class Settings(BaseSettings):
 
     @property
     def ytdlp_update_dir(self) -> Path:
-        """Where newer yt-dlp releases get unpacked, see ytdlp_updater."""
-        return self.config / "yubal" / "yt-dlp"
+        """Where newer yt-dlp releases get unpacked, see ytdlp_updater.
+
+        Outside any volume so a recreated container starts from the bundled
+        copy, and outside `temp` because that is wiped on every shutdown.
+        """
+        return Path(tempfile.gettempdir()) / "yubal-yt-dlp"
 
     @property
     def db_path(self) -> Path:
