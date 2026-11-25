@@ -170,6 +170,8 @@ Auto-add requires authenticated [cookies](#-cookies-optional): it scans your You
 
 `YUBAL_AUTO_DELETE` runs before each scheduled sync and deletes downloaded tracks (and their lyrics) that no M3U in `_Playlists` lists anymore, so a song removed from all your playlists, albums and artists goes away. It needs the three M3U options on, waits until the previous sync is done, and refuses to delete anything when more than 20% of the library would go. Files you put in the library folder yourself count as unlisted too.
 
+yt-dlp keeps itself up to date: every 6 hours yubal checks PyPI for a new release, unpacks it into `config/yubal/yt-dlp` and restarts itself once the queue is empty (or after an hour at most; an interrupted job resumes where it stopped). The container keeps running through it. When a newer image bundles a newer yt-dlp, the downloaded copy is dropped. Delete that folder to go back to the bundled version.
+
 Notifications go through [Apprise](https://github.com/caronc/apprise/wiki), so any service it supports works, for example `gotify://host/token`, `notifiarr://apikey`, `ntfy://topic` or `discord://webhook_id/webhook_token`.
 
 By default problems are bundled into one message per day, grouped by kind with a count and a few examples; nothing is sent on a quiet day. Set `YUBAL_NOTIFY_DIGEST_HOURS=0` to get each one as it happens. A job with failed tracks sends a single message listing them rather than one per track.

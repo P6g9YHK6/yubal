@@ -231,6 +231,11 @@ class Settings(BaseSettings):
         return self.ytdlp_dir / "cookies.txt"
 
     @property
+    def ytdlp_update_dir(self) -> Path:
+        """Where newer yt-dlp releases get unpacked, see ytdlp_updater."""
+        return self.config / "yubal" / "yt-dlp"
+
+    @property
     def db_path(self) -> Path:
         return self.config / "yubal" / "yubal.db"
 

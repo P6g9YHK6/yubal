@@ -60,6 +60,7 @@ from yubal_api.services.playlist_info_service import PlaylistInfoService
 from yubal_api.services.scheduler import Scheduler
 from yubal_api.services.shutdown_coordinator import ShutdownCoordinator
 from yubal_api.services.subscription_service import SubscriptionService
+from yubal_api.services.ytdlp_updater import YtdlpUpdater, describe_running
 from yubal_api.settings import get_settings
 
 # Global reference for shutdown suppression
@@ -304,6 +305,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Start scheduler
     services.scheduler.start()
 
+    logger.info("yt-dlp %s", describe_running(settings.ytdlp_update_dir))
+    ytdlp_updater = YtdlpUpdater(settings.ytdlp_update_dir, services.job_executor)
+    ytdlp_updater.start()
+
     yield
 
     # Shutdown sequence
@@ -311,6 +316,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     services.job_store.stop_persisting()
 
     # Stop scheduler first
+    await ytdlp_updater.stop()
     await services.scheduler.stop()
 
     # Cancel any running jobs
