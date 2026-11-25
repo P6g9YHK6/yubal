@@ -60,6 +60,15 @@ _LIBRARY_FETCH_LIMIT = 1000
 _LIKED_MUSIC_ID = LIKED_MUSIC_ID
 _LIKED_MUSIC_TITLE = "Liked Music"
 
+# Made-up playlist ID standing for the "Quick picks" shelf of the signed-in
+# user's home page. It has no real playlist behind it and changes every few
+# hours, so it is rebuilt from get_home() on each fetch.
+QUICK_PICKS_ID = "QUICKPICKS"
+QUICK_PICKS_URL = f"https://music.youtube.com/playlist?list={QUICK_PICKS_ID}"
+_QUICK_PICKS_TITLE = "Quick picks"
+# Home shelves to load, Quick picks is usually within the first five
+_HOME_SHELF_LIMIT = 10
+
 
 class YTMusicProtocol(Protocol):
     """Protocol for YouTube Music API clients.
@@ -189,6 +198,9 @@ class YTMusicClient:
         if not playlist_id or not playlist_id.strip():
             raise ValueError("playlist_id cannot be empty")
 
+        if playlist_id == QUICK_PICKS_ID:
+            return self._get_quick_picks()
+
         # Check for unsupported playlist prefixes before making API call
         self._check_playlist_type(playlist_id)
 
@@ -296,6 +308,65 @@ class YTMusicClient:
             len(unavailable_tracks),
         )
         return Playlist.model_validate(data)
+
+    def _get_quick_picks(self) -> Playlist:
+        """Build a playlist from the "Quick picks" shelf of the home page.
+
+        Home items have no duration, which lyrics lookup and the M3U need,
+        so each song is fetched again through get_track().
+        """
+        if not self._is_authenticated():
+            raise AuthenticationRequiredError(
+                "Quick picks are personal and require authentication. "
+                "Please upload your YouTube Music cookies via the web UI."
+            )
+
+        logger.debug("Fetching home page for Quick picks")
+        try:
+            home = self._ytm.get_home(limit=_HOME_SHELF_LIMIT)
+        except YTMusicError as e:
+            logger.warning("YTMusic error for home page: %s", e)
+            raise UpstreamAPIError(f"Failed to fetch home page: {e}") from e
+
+        shelf = self._find_quick_picks_shelf(home)
+        if shelf is None:
+            raise PlaylistNotFoundError("No Quick picks on the YouTube Music home page")
+
+        tracks: list[PlaylistTrack] = []
+        for item in shelf.get("contents") or []:
+            video_id = item.get("videoId") if isinstance(item, dict) else None
+            if not video_id:
+                continue
+            try:
+                tracks.append(self.get_track(video_id))
+            except (TrackNotFoundError, UpstreamAPIError) as e:
+                logger.warning("Skipping Quick picks song %s: %s", video_id, e)
+
+        return Playlist.model_validate({"title": _QUICK_PICKS_TITLE, "tracks": tracks})
+
+    @staticmethod
+    def _find_quick_picks_shelf(
+        home: list[dict[str, Any]],
+    ) -> dict[str, Any] | None:
+        """Find the Quick picks shelf among the home page shelves.
+
+        The shelf title follows the account language, so when no shelf is
+        called "Quick picks" the first one made of songs with an album is
+        taken, that's what Quick picks look like and other song shelves don't.
+        """
+        for shelf in home:
+            if (shelf.get("title") or "").strip().casefold() == "quick picks":
+                return shelf
+        for shelf in home:
+            contents = shelf.get("contents") or []
+            songs = [item for item in contents if isinstance(item, dict)]
+            if (
+                songs
+                and all(item.get("videoId") for item in songs)
+                and any(item.get("album") for item in songs)
+            ):
+                return shelf
+        return None
 
     def _normalize_playlist_track(self, track: dict[str, Any]) -> dict[str, Any]:
         """Normalize playlist track fields before model validation."""

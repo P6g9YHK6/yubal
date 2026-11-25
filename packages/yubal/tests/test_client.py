@@ -5,11 +5,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from ytmusicapi.auth.types import AuthType
 from ytmusicapi.exceptions import YTMusicServerError
-from yubal.client import YTMusicClient
+from yubal.client import QUICK_PICKS_ID, YTMusicClient
 from yubal.exceptions import (
     ArtistNotFoundError,
     AuthenticationRequiredError,
     ChannelParseError,
+    PlaylistNotFoundError,
     TrackNotFoundError,
     UpstreamAPIError,
 )
@@ -565,3 +566,100 @@ class TestGetArtistAlbums:
 
         with pytest.raises(ArtistNotFoundError):
             client.get_artist_albums("UC123")
+
+
+def _home_song(video_id: str, album: str | None = "Album") -> dict:
+    return {
+        "videoId": video_id,
+        "title": f"Song {video_id}",
+        "artists": [{"name": "Artist", "id": "UC1"}],
+        "album": {"name": album, "id": "MPREb_1"} if album else None,
+        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+        "thumbnails": [],
+    }
+
+
+def _watch(video_id: str) -> dict:
+    return {
+        "tracks": [
+            {
+                "videoId": video_id,
+                "title": f"Song {video_id}",
+                "artists": [{"name": "Artist", "id": "UC1"}],
+                "album": {"name": "Album", "id": "MPREb_1"},
+                "videoType": "MUSIC_VIDEO_TYPE_ATV",
+                "thumbnails": [],
+                "length": "3:05",
+            }
+        ]
+    }
+
+
+class TestQuickPicks:
+    """Tests for the Quick picks home shelf served as a playlist."""
+
+    def _client(self, home: list[dict]) -> tuple[YTMusicClient, MagicMock]:
+        mock_ytm = MagicMock()
+        mock_ytm.auth_type = AuthType.BROWSER
+        mock_ytm.get_home.return_value = home
+        mock_ytm.get_watch_playlist.side_effect = lambda vid: _watch(vid)
+        return YTMusicClient(ytmusic=mock_ytm), mock_ytm
+
+    def test_builds_playlist_from_shelf(self) -> None:
+        client, mock_ytm = self._client(
+            [
+                {"title": "Forgotten favorites", "contents": [{"playlistId": "RD1"}]},
+                {
+                    "title": "Quick picks",
+                    "contents": [_home_song("a"), _home_song("b")],
+                },
+            ]
+        )
+
+        playlist = client.get_playlist(QUICK_PICKS_ID)
+
+        assert playlist.title == "Quick picks"
+        assert [t.video_id for t in playlist.tracks] == ["a", "b"]
+        assert playlist.tracks[0].duration_seconds == 185
+        mock_ytm.get_playlist.assert_not_called()
+
+    def test_finds_translated_shelf_by_shape(self) -> None:
+        client, _ = self._client(
+            [
+                {"title": "Covers", "contents": [_home_song("x", album=None)]},
+                {"title": "Choix rapides", "contents": [_home_song("a")]},
+            ]
+        )
+
+        playlist = client.get_playlist(QUICK_PICKS_ID)
+
+        assert [t.video_id for t in playlist.tracks] == ["a"]
+
+    def test_skips_songs_that_fail(self) -> None:
+        client, mock_ytm = self._client(
+            [{"title": "Quick picks", "contents": [_home_song("a"), _home_song("b")]}]
+        )
+        mock_ytm.get_watch_playlist.side_effect = lambda vid: (
+            {"tracks": []} if vid == "a" else _watch(vid)
+        )
+
+        playlist = client.get_playlist(QUICK_PICKS_ID)
+
+        assert [t.video_id for t in playlist.tracks] == ["b"]
+
+    def test_missing_shelf_raises_not_found(self) -> None:
+        client, _ = self._client(
+            [{"title": "Mixes", "contents": [{"playlistId": "R"}]}]
+        )
+
+        with pytest.raises(PlaylistNotFoundError):
+            client.get_playlist(QUICK_PICKS_ID)
+
+    def test_requires_auth(self) -> None:
+        mock_ytm = MagicMock()
+        mock_ytm.auth_type = AuthType.UNAUTHORIZED
+        client = YTMusicClient(ytmusic=mock_ytm)
+
+        with pytest.raises(AuthenticationRequiredError, match="Quick picks"):
+            client.get_playlist(QUICK_PICKS_ID)
+        mock_ytm.get_home.assert_not_called()

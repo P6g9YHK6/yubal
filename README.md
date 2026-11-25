@@ -160,11 +160,12 @@ docker compose up -d
 | `YUBAL_ALBUM_M3U`             | Write an M3U for each album added on its own         | `true`           |
 | `YUBAL_ARTIST_M3U`            | Write one M3U per artist discography                 | `true`           |
 | `YUBAL_AUTO_DELETE`           | Delete tracks that are no longer in any playlist     | `false`          |
+| `YUBAL_QUICK_PICKS`           | Keep a "Quick picks" playlist synced from home page  | `false`          |
 | `YUBAL_LIKED_PLAYLIST_PREFIX` | Prefix for the Liked Music playlist name (e.g. `1_`) | (none)           |
 | `YUBAL_NOTIFY_URLS`           | [Apprise] URLs for error alerts, comma separated     | (unset)          |
 | `YUBAL_NOTIFY_LEVEL`          | Lowest log level sent as a notification              | `ERROR`          |
 
-Auto-add requires authenticated [cookies](#-cookies-optional): it scans your YouTube Music library on each sync cycle.
+Auto-add requires authenticated [cookies](#-cookies-optional): it scans your YouTube Music library on each sync cycle. So does `YUBAL_QUICK_PICKS`, which subscribes to the Quick picks of your home page; the playlist follows whatever they are at each sync.
 
 `YUBAL_AUTO_DELETE` runs before each scheduled sync and deletes downloaded tracks (and their lyrics) that no M3U in `_Playlists` lists anymore, so a song removed from all your playlists, albums and artists goes away. It needs the three M3U options on, waits until the previous sync is done, and refuses to delete anything when more than 20% of the library would go. Files you put in the library folder yourself count as unlisted too.
 

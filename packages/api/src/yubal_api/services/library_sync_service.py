@@ -3,7 +3,8 @@
 Scans the user's YouTube Music library (saved playlists, saved albums,
 followed artists) and auto-creates subscriptions for anything not already
 subscribed. Runs at the top of each sync cycle when enabled via the
-YUBAL_AUTO_ADD_* settings.
+YUBAL_AUTO_ADD_* settings. YUBAL_QUICK_PICKS adds the home page's Quick
+picks the same way.
 """
 
 import logging
@@ -12,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TypeVar
 
-from yubal.client import YTMusicProtocol
+from yubal.client import QUICK_PICKS_URL, YTMusicProtocol
 from yubal.models.ytmusic import LibraryAlbum
 
 from yubal_api.api.exceptions import SubscriptionConflictError
@@ -76,6 +77,8 @@ class LibrarySyncService:
                 lambda a: f"https://music.youtube.com/channel/{a.browse_id}",
                 "artist",
             )
+        if self.settings.quick_picks:
+            added += self._add_new_items([QUICK_PICKS_URL], lambda url: url, "playlist")
         return added
 
     def _any_enabled(self) -> bool:
@@ -83,6 +86,7 @@ class LibrarySyncService:
             self.settings.auto_add_playlists
             or self.settings.auto_add_albums
             or self.settings.auto_add_artists
+            or self.settings.quick_picks
         )
 
     def _fetch(self, label: str, fetch_fn: Callable[[], list[T]]) -> list[T]:

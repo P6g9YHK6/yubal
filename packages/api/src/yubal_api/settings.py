@@ -122,6 +122,10 @@ class Settings(BaseSettings):
         default=False,
         description="Delete downloaded tracks that are no longer in any playlist",
     )
+    quick_picks: bool = Field(
+        default=False,
+        description="Keep a playlist synced with the home page's Quick picks",
+    )
     liked_playlist_prefix: str = Field(
         default="", description="Prefix for the Liked Music playlist name"
     )

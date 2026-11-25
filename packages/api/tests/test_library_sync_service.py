@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from yubal.client import QUICK_PICKS_URL
 from yubal.models.ytmusic import LibraryAlbum, LibraryArtist, LibraryPlaylist
 from yubal_api.api.exceptions import SubscriptionConflictError
 from yubal_api.services.library_sync_service import LibrarySyncService
@@ -32,6 +33,7 @@ def settings() -> MagicMock:
     settings.auto_add_playlists = False
     settings.auto_add_albums = False
     settings.auto_add_artists = False
+    settings.quick_picks = False
     return settings
 
 
@@ -50,6 +52,21 @@ def service(
 
 
 class TestScanAndAdd:
+    def test_quick_picks_adds_its_subscription(
+        self,
+        service: LibrarySyncService,
+        mock_client: MagicMock,
+        mock_subscription_service: MagicMock,
+        settings: MagicMock,
+    ) -> None:
+        settings.quick_picks = True
+
+        added = service.scan_and_add()
+
+        assert added == 1
+        mock_subscription_service.create.assert_called_once_with(QUICK_PICKS_URL)
+        mock_client.get_library_playlists.assert_not_called()
+
     def test_no_flags_enabled_is_a_no_op(
         self, service: LibrarySyncService, mock_client: MagicMock
     ) -> None:
