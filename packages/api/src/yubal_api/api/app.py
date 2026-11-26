@@ -188,6 +188,7 @@ def create_services(
         id_generator=lambda: str(uuid.uuid4()),
         event_bus=job_event_bus,
         repository=job_repository,
+        max_jobs=settings.max_jobs,
     )
 
     # Pace every YouTube Music API call made by this process

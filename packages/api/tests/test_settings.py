@@ -321,6 +321,15 @@ class TestM3uSettings:
         assert getattr(Settings(), field) is False
 
 
+class TestMaxJobs:
+    def test_default(self) -> None:
+        assert _create_settings().max_jobs == 200
+
+    def test_must_be_positive(self) -> None:
+        with pytest.raises(ValidationError):
+            _create_settings(max_jobs=0)
+
+
 class TestNotify:
     """Tests for notification settings."""
 

@@ -173,6 +173,12 @@ class Settings(BaseSettings):
         description="Kill a job after this many seconds without progress",
     )
 
+    max_jobs: int = Field(
+        default=200,
+        ge=1,
+        description="Most jobs kept, queued plus finished history",
+    )
+
     # Notification settings
     notify_urls: str = Field(
         default="",

@@ -613,6 +613,19 @@ class TestCapacityLimits:
         result = store.create("https://music.youtube.com/playlist?list=PLextra")
         assert result is None
 
+    def test_configured_limit(self, clock: Any, id_generator: Any) -> None:
+        """Should use max_jobs instead of the default when given."""
+        store = JobStore(
+            clock=clock, id_generator=id_generator, event_bus=JobEventBus(), max_jobs=2
+        )
+
+        assert store.create("https://music.youtube.com/playlist?list=PL1")
+        assert store.create("https://music.youtube.com/playlist?list=PL2")
+        assert store.create("https://music.youtube.com/playlist?list=PL3") is None
+
+        store.transition("job-0001", JobStatus.COMPLETED)
+        assert store.create("https://music.youtube.com/playlist?list=PL3")
+
     def test_pruning_removes_oldest_finished(
         self, clock: Any, id_generator: Any
     ) -> None:

@@ -43,7 +43,8 @@ class JobStore:
         - Timeout enforcement (handled by asyncio.timeout in JobExecutor)
 
     Capacity:
-        When at MAX_JOBS, completed jobs are pruned to make room for new ones.
+        When at max_jobs (MAX_JOBS unless set), completed jobs are pruned
+        to make room for new ones.
         If all jobs are active/queued, job creation returns None.
     """
 
@@ -55,6 +56,7 @@ class JobStore:
         id_generator: IdGenerator,
         event_bus: JobEventBus,
         repository: JobRepository | None = None,
+        max_jobs: int = MAX_JOBS,
     ) -> None:
         """Initialize the job store.
 
@@ -63,7 +65,9 @@ class JobStore:
             id_generator: Function generating unique job IDs.
             event_bus: Event bus for emitting job state change events.
             repository: Optional repository to save jobs across restarts.
+            max_jobs: Most jobs kept, queued and finished together.
         """
+        self._max_jobs = max_jobs
         self._clock = clock
         self._id_generator = id_generator
         self._event_bus = event_bus
@@ -450,7 +454,7 @@ class JobStore:
         Returns:
             True if capacity is available, False if all jobs are active/queued.
         """
-        while len(self._jobs) >= self.MAX_JOBS:
+        while len(self._jobs) >= self._max_jobs:
             if oldest := next(self._iter_finished(), None):
                 self._remove(oldest.id)
             else:
