@@ -10,8 +10,10 @@ from uuid import UUID
 
 from yubal import AudioCodec, CancelToken, cleanup_part_files
 
+from yubal_api.db.subscription import SubscriptionFields
 from yubal_api.domain.enums import JobSource, JobStatus, ProgressStep
 from yubal_api.domain.job import ContentInfo, Job
+from yubal_api.services.job_priority import next_rate
 from yubal_api.services.protocols import JobExecutionStore
 from yubal_api.services.subscription_service import SubscriptionService
 from yubal_api.services.sync_service import SyncResult, SyncService
@@ -126,6 +128,10 @@ class JobExecutor:
         max_items: int | None = None,
         source: JobSource = JobSource.MANUAL,
         subscription_id: UUID | None = None,
+        *,
+        first_sync: bool = False,
+        change_rate: float | None = None,
+        waiting_since: datetime | None = None,
     ) -> Job | None:
         """Create a new job and start it if ready.
 
@@ -138,12 +144,22 @@ class JobExecutor:
             max_items: Maximum number of items to download (None for all).
             source: Source of the job (manual API call or scheduler).
             subscription_id: Optional subscription that triggered this job.
+            first_sync: The subscription was never synced before.
+            change_rate: The subscription's new tracks per sync, if known.
+            waiting_since: When the subscription was last synced.
 
         Returns:
             The created Job, or None if queue is full.
         """
         result = self._job_store.create(
-            url, self._audio_format, max_items, source, subscription_id
+            url,
+            self._audio_format,
+            max_items,
+            source,
+            subscription_id,
+            first_sync=first_sync,
+            change_rate=change_rate,
+            waiting_since=waiting_since,
         )
         if result is None:
             return None
@@ -312,20 +328,8 @@ class JobExecutor:
                     )
                     if result.failed_tracks:
                         self._log_failed_tracks(url, result)
-                    # Update subscription metadata with latest info from YouTube Music
-                    if (
-                        self._subscription_service
-                        and subscription_id
-                        and result.content_info
-                        and result.content_info.title
-                    ):
-                        self._subscription_service.update(
-                            subscription_id,
-                            {
-                                "name": result.content_info.title,
-                                "thumbnail_url": result.content_info.thumbnail_url,
-                            },
-                        )
+                    if self._subscription_service and subscription_id:
+                        self._update_subscription(job_id, subscription_id, result)
                 else:
                     error_msg = result.error or "Unknown error"
                     logger.error("Job %s failed: %s", job_id[:8], error_msg)
@@ -357,6 +361,24 @@ class JobExecutor:
             # This ensures no concurrent downloads
             self._job_store.release_active(job_id)
             self._start_next_pending()
+
+    def _update_subscription(
+        self, job_id: str, subscription_id: UUID, result: SyncResult
+    ) -> None:
+        """Store the latest name and art, and how many new tracks it brought."""
+        assert self._subscription_service is not None
+        fields: SubscriptionFields = {}
+        # Latest info from YouTube Music
+        if result.content_info and result.content_info.title:
+            fields["name"] = result.content_info.title
+            fields["thumbnail_url"] = result.content_info.thumbnail_url
+        if result.download_stats:
+            job = self._job_store.get(job_id)
+            fields["change_rate"] = next_rate(
+                job.change_rate if job else None, result.download_stats.success
+            )
+        if fields:
+            self._subscription_service.update(subscription_id, fields)
 
     @staticmethod
     def _log_failed_tracks(url: str, result: SyncResult) -> None:

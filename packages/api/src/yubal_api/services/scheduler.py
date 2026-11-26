@@ -12,6 +12,7 @@ from yubal_api.api.exceptions import SubscriptionNotFoundError
 from yubal_api.db.subscription import Subscription
 from yubal_api.domain.enums import JobSource
 from yubal_api.services.job_executor import JobExecutor
+from yubal_api.services.job_priority import subscription_priority
 from yubal_api.services.library_sync_service import LibrarySyncService
 from yubal_api.services.subscription_service import SubscriptionService
 from yubal_api.settings import Settings
@@ -120,24 +121,37 @@ class Scheduler:
                 await self._sync_all_enabled()
 
     def _create_jobs_for_subscriptions(
-        self, subscriptions: list[Subscription]
+        self,
+        subscriptions: list[Subscription],
+        source: JobSource = JobSource.SCHEDULER,
     ) -> list[str]:
-        """Create sync jobs for given subscriptions."""
+        """Create sync jobs for given subscriptions, in the order given.
+
+        Stops at the first one the queue has no room for: the rest keep their
+        last sync time, so they rank higher on the next sweep.
+        """
         job_ids: list[str] = []
-        for subscription in subscriptions:
+        for index, subscription in enumerate(subscriptions):
             try:
                 job = self._job_executor.create_and_start_job(
                     subscription.url,
                     subscription.max_items,
-                    JobSource.SCHEDULER,
+                    source,
                     subscription.id,
+                    first_sync=subscription.last_synced_at is None,
+                    change_rate=subscription.change_rate,
+                    waiting_since=subscription.last_synced_at,
                 )
                 if job is None:
+                    left = len(subscriptions) - index
                     logger.warning(
-                        "Could not create job for %s (queue full)",
+                        "Queue full (YUBAL_MAX_JOBS=%d): %d subscription(s) left "
+                        "for the next sweep, starting with %s",
+                        self._settings.max_jobs,
+                        left,
                         subscription.name,
                     )
-                    continue
+                    break
 
                 job_ids.append(job.id)
                 self._subscription_service.update(
@@ -155,6 +169,16 @@ class Scheduler:
                     subscription.name,
                 )
         return job_ids
+
+    @staticmethod
+    def _by_priority(subscriptions: list[Subscription]) -> list[Subscription]:
+        """Order a sweep the way the queue will run it, see job_priority."""
+        now = datetime.now(UTC)
+        return sorted(
+            subscriptions,
+            key=lambda s: subscription_priority(s, now),
+            reverse=True,
+        )
 
     def _without_queued(self, subscriptions: list[Subscription]) -> list[Subscription]:
         """Drop subscriptions that already have a job queued or running.
@@ -220,7 +244,9 @@ class Scheduler:
         await asyncio.to_thread(self._run_auto_delete)
         self._run_library_scan()
         return self._create_jobs_for_subscriptions(
-            self._without_queued(self._subscription_service.list(enabled=True))
+            self._by_priority(
+                self._without_queued(self._subscription_service.list(enabled=True))
+            )
         )
 
     def sync_subscription(self, subscription_id: UUID) -> str | None:
@@ -234,12 +260,14 @@ class Scheduler:
         except SubscriptionNotFoundError:
             return None
 
-        job_ids = self._create_jobs_for_subscriptions([subscription])
+        job_ids = self._create_jobs_for_subscriptions([subscription], JobSource.MANUAL)
         return job_ids[0] if job_ids else None
 
     def sync_all(self) -> list[str]:
         """Create sync jobs for all enabled subscriptions. Returns job_ids."""
         self._run_library_scan()
         return self._create_jobs_for_subscriptions(
-            self._without_queued(self._subscription_service.list(enabled=True))
+            self._by_priority(
+                self._without_queued(self._subscription_service.list(enabled=True))
+            )
         )

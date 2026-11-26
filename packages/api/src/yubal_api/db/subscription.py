@@ -22,6 +22,7 @@ class SubscriptionFields(TypedDict, total=False):
     name: str
     thumbnail_url: str | None
     last_synced_at: datetime
+    change_rate: float
 
 
 class Subscription(SQLModel, table=True):
@@ -38,3 +39,5 @@ class Subscription(SQLModel, table=True):
     thumbnail_url: str | None = Field(default=None, max_length=2048)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_synced_at: datetime | None = Field(default=None)
+    # New tracks per sync, a moving average used to order the queue
+    change_rate: float | None = Field(default=None)

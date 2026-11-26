@@ -1,12 +1,14 @@
 """Comprehensive tests for JobStore."""
 
 import threading
+from datetime import datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from yubal import AudioCodec, PhaseStats
 from yubal_api.domain.enums import JobSource, JobStatus
-from yubal_api.domain.job import ContentInfo
+from yubal_api.domain.job import ContentInfo, Job
 from yubal_api.services.job_event_bus import JobEventBus
 from yubal_api.services.job_store import JobStore
 
@@ -959,3 +961,61 @@ class TestEdgeCases:
         # job-0002 and job-0003 should still exist
         assert store.get("job-0002") is not None
         assert store.get("job-0003") is not None
+
+
+class TestPriorityPick:
+    """The queue runs the most useful pending job, not the oldest."""
+
+    PLAYLIST = "https://music.youtube.com/playlist?list="
+
+    def _store(self, clock: Any, id_generator: Any) -> JobStore:
+        store = JobStore(
+            clock=clock, id_generator=id_generator, event_bus=JobEventBus()
+        )
+        # Occupy the active slot so the jobs below stay pending
+        store.create(f"{self.PLAYLIST}PLrunning")
+        return store
+
+    def _scheduled(self, store: JobStore, playlist_id: str, since: datetime) -> Job:
+        result = store.create(
+            f"{self.PLAYLIST}{playlist_id}",
+            source=JobSource.SCHEDULER,
+            subscription_id=uuid4(),
+            waiting_since=since,
+        )
+        assert result is not None
+        return result[0]
+
+    def test_manual_jumps_the_nightly_batch(
+        self, clock: Any, id_generator: Any
+    ) -> None:
+        store = self._store(clock, id_generator)
+        for i in range(3):
+            self._scheduled(store, f"PL{i}", clock() - timedelta(days=1))
+        manual = store.create(f"{self.PLAYLIST}PLmine")
+        assert manual is not None
+
+        store.transition("job-0001", JobStatus.COMPLETED)
+        store.release_active("job-0001")
+        assert store.pop_next_pending() == manual[0]
+
+    def test_liked_music_before_an_older_album(
+        self, clock: Any, id_generator: Any
+    ) -> None:
+        store = self._store(clock, id_generator)
+        day = clock() - timedelta(days=1)
+        self._scheduled(store, "OLAK5uy_album", day)
+        liked = self._scheduled(store, "LM", day)
+
+        store.transition("job-0001", JobStatus.COMPLETED)
+        store.release_active("job-0001")
+        assert store.pop_next_pending() == liked
+
+    def test_saved_job_from_before_still_loads(self) -> None:
+        old = '{"id": "j1", "url": "https://x", "source": "scheduler"}'
+        job = Job.model_validate_json(old)
+        assert (job.first_sync, job.change_rate, job.waiting_since) == (
+            False,
+            None,
+            None,
+        )

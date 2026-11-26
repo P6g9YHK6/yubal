@@ -1,6 +1,6 @@
 """Tests for the scheduler service."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -8,7 +8,25 @@ from zoneinfo import ZoneInfo
 
 import pytest
 from yubal_api.api.exceptions import SubscriptionNotFoundError
+from yubal_api.domain.enums import JobSource
 from yubal_api.services.scheduler import Scheduler
+
+
+def _subscription(
+    name: str,
+    url: str,
+    last_synced_at: datetime | None = None,
+    change_rate: float | None = None,
+) -> MagicMock:
+    subscription = MagicMock(
+        url=url,
+        id=uuid4(),
+        max_items=None,
+        last_synced_at=last_synced_at,
+        change_rate=change_rate,
+    )
+    subscription.name = name
+    return subscription
 
 
 @pytest.fixture
@@ -182,10 +200,8 @@ class TestSkipsQueuedSubscriptions:
 
     @pytest.fixture
     def queued_setup(self, mock_settings: MagicMock) -> tuple[Scheduler, MagicMock]:
-        queued = MagicMock(url="https://example.com/queued", id=uuid4())
-        queued.name = "queued"
-        free = MagicMock(url="https://example.com/free", id=uuid4())
-        free.name = "free"
+        queued = _subscription("queued", "https://example.com/queued")
+        free = _subscription("free", "https://example.com/free")
         subscription_service = MagicMock()
         subscription_service.list.return_value = [queued, free]
         subscription_service.get.return_value = queued
@@ -230,6 +246,79 @@ class TestSkipsQueuedSubscriptions:
 
         assert scheduler.sync_subscription(uuid4()) == "job-12345"
         assert self._created_urls(job_executor) == ["https://example.com/queued"]
+
+
+class TestSweepOrder:
+    """Sweeps queue the most useful subscriptions first."""
+
+    @pytest.fixture
+    def setup(
+        self, mock_settings: MagicMock
+    ) -> tuple[Scheduler, MagicMock, MagicMock, list]:
+        mock_settings.max_jobs = 2
+        now = datetime.now(UTC)
+        playlist = "https://music.youtube.com/playlist?list="
+        subscriptions = [
+            _subscription("album", f"{playlist}OLAK5uy_a", now - timedelta(days=2)),
+            _subscription("liked", f"{playlist}LM", now - timedelta(days=1)),
+            _subscription("brand new", f"{playlist}PLnew"),
+            _subscription("phonk", f"{playlist}PLphonk", now - timedelta(days=1)),
+        ]
+        subscription_service = MagicMock()
+        subscription_service.list.return_value = subscriptions
+        job_executor = MagicMock()
+        job_executor.unfinished_job_urls.return_value = set()
+        scheduler = Scheduler(subscription_service, job_executor, mock_settings)
+        return scheduler, job_executor, subscription_service, subscriptions
+
+    @staticmethod
+    def _created(job_executor: MagicMock) -> list[str]:
+        return [
+            c.args[0].rsplit("=", 1)[1]
+            for c in job_executor.create_and_start_job.call_args_list
+        ]
+
+    def test_order(self, setup: tuple[Scheduler, MagicMock, MagicMock, list]) -> None:
+        scheduler, job_executor, _, _ = setup
+
+        scheduler.sync_all()
+
+        assert self._created(job_executor) == ["PLnew", "LM", "PLphonk", "OLAK5uy_a"]
+        first = job_executor.create_and_start_job.call_args_list[0]
+        assert first.kwargs["first_sync"] is True
+        assert first.args[2] == JobSource.SCHEDULER
+
+    def test_stops_when_full(
+        self,
+        setup: tuple[Scheduler, MagicMock, MagicMock, list],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        scheduler, job_executor, service, subscriptions = setup
+        job_executor.create_and_start_job.side_effect = [
+            MagicMock(id="j1"),
+            MagicMock(id="j2"),
+            None,
+            MagicMock(id="never asked"),
+        ]
+
+        assert scheduler.sync_all() == ["j1", "j2"]
+        assert job_executor.create_and_start_job.call_count == 3
+        assert caplog.text.count("Queue full") == 1
+        assert "2 subscription(s) left for the next sweep, starting with phonk" in (
+            caplog.text
+        )
+        updated = {c.args[0] for c in service.update.mock_calls}
+        assert updated == {subscriptions[2].id, subscriptions[1].id}
+
+    def test_sync_now_is_manual(
+        self, setup: tuple[Scheduler, MagicMock, MagicMock, list]
+    ) -> None:
+        scheduler, job_executor, service, subscriptions = setup
+        service.get.return_value = subscriptions[0]
+
+        scheduler.sync_subscription(uuid4())
+
+        assert job_executor.create_and_start_job.call_args.args[2] == JobSource.MANUAL
 
 
 class TestAutoDelete:

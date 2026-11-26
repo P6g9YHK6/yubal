@@ -27,12 +27,20 @@ class JobExecutionStore(Protocol):
         max_items: int | None = None,
         source: JobSource = JobSource.MANUAL,
         subscription_id: UUID | None = None,
+        *,
+        first_sync: bool = False,
+        change_rate: float | None = None,
+        waiting_since: datetime | None = None,
     ) -> tuple[Job, bool] | None:
         """Create a new job.
 
         Returns:
             Tuple of (job, should_start) or None if queue is full.
         """
+        ...
+
+    def get(self, job_id: str) -> Job | None:
+        """Get a job by ID."""
         ...
 
     def transition(

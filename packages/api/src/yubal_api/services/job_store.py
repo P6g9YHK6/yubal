@@ -17,6 +17,7 @@ from yubal_api.domain.enums import JobSource, JobStatus
 from yubal_api.domain.job import ContentInfo, Job
 from yubal_api.domain.types import Clock, IdGenerator
 from yubal_api.services.job_event_bus import JobEventBus
+from yubal_api.services.job_priority import Priority, job_priority
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +139,10 @@ class JobStore:
         max_items: int | None = None,
         source: JobSource = JobSource.MANUAL,
         subscription_id: UUID | None = None,
+        *,
+        first_sync: bool = False,
+        change_rate: float | None = None,
+        waiting_since: datetime | None = None,
     ) -> tuple[Job, bool] | None:
         """Create a new job.
 
@@ -150,6 +155,9 @@ class JobStore:
             max_items: Maximum number of items to download (None for all).
             source: Source of the job (manual API call or scheduler).
             subscription_id: Optional subscription that triggered this job.
+            first_sync: The subscription was never synced before.
+            change_rate: The subscription's new tracks per sync, if known.
+            waiting_since: When the subscription was last synced.
 
         Returns:
             Tuple of (job, should_start_immediately), or None if queue is full.
@@ -166,6 +174,9 @@ class JobStore:
                 max_items=max_items,
                 subscription_id=subscription_id,
                 source=source,
+                first_sync=first_sync,
+                change_rate=change_rate,
+                waiting_since=waiting_since,
             )
             self._jobs[job.id] = job
             self._positions[job.id] = self._next_position
@@ -338,19 +349,26 @@ class JobStore:
     # -------------------------------------------------------------------------
 
     def pop_next_pending(self) -> Job | None:
-        """Activate and return the next pending job.
+        """Activate and return the pending job that should run next.
 
-        Uses FIFO ordering (insertion order via OrderedDict).
+        Picks by job_priority, the earliest queued wins a tie.
 
         Returns:
             The next pending job, or None if queue is empty.
         """
         with self._locked():
+            now = self._clock()
+            best: Job | None = None
+            best_priority: Priority | None = None
             for job in self._jobs.values():
-                if job.status == JobStatus.PENDING and job.id != self._active_job_id:
-                    self._active_job_id = job.id
-                    return job
-            return None
+                if job.status != JobStatus.PENDING or job.id == self._active_job_id:
+                    continue
+                priority = job_priority(job, now)
+                if best_priority is None or priority > best_priority:
+                    best, best_priority = job, priority
+            if best is not None:
+                self._active_job_id = best.id
+            return best
 
     def release_active(self, job_id: str) -> bool:
         """Release the active job slot after execution ends.

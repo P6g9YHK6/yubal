@@ -3,7 +3,8 @@
 import logging
 import time
 from typing import Any
-from uuid import UUID
+from unittest.mock import MagicMock
+from uuid import UUID, uuid4
 
 import pytest
 from yubal import AudioCodec, PhaseStats
@@ -28,9 +29,13 @@ class FakeJobStore:
         max_items: int | None = None,
         source: JobSource = JobSource.MANUAL,
         subscription_id: UUID | None = None,
+        **_hints: Any,
     ) -> tuple[Job, bool] | None:
         job = Job(id="test-job", url=url, audio_format=audio_format)
         return job, True
+
+    def get(self, job_id: str) -> Job | None:
+        return None
 
     def transition(self, job_id: str, status: JobStatus, **kwargs: Any) -> Job:
         self.transitions.append((job_id, status))
@@ -269,3 +274,39 @@ class TestFailedTracksSummary:
         assert "- Some Band - Song 19: unavailable" in message
         assert "Song 20" not in message
         assert message.endswith("- and 5 more")
+
+
+class TestLearnsChangeRate:
+    def _executor(self, tmp_path: Any, old_rate: float | None) -> tuple[Any, Any]:
+        store = MagicMock()
+        store.get.return_value = Job(id="j", url="https://x", change_rate=old_rate)
+        subscriptions = MagicMock()
+        executor = JobExecutor(
+            job_store=store, base_path=tmp_path, subscription_service=subscriptions
+        )
+        return executor, subscriptions
+
+    def test_stores_new_rate_and_metadata(self, tmp_path: Any) -> None:
+        executor, subscriptions = self._executor(tmp_path, 10)
+        sub_id = uuid4()
+        result = SyncResult(
+            success=True,
+            content_info=ContentInfo(title="Liked Music", artist="Me"),
+            download_stats=PhaseStats(success=0),
+        )
+
+        executor._update_subscription("j", sub_id, result)
+
+        subscriptions.update.assert_called_once_with(
+            sub_id,
+            {"name": "Liked Music", "thumbnail_url": None, "change_rate": 7.0},
+        )
+
+    def test_first_measure(self, tmp_path: Any) -> None:
+        executor, subscriptions = self._executor(tmp_path, None)
+
+        executor._update_subscription(
+            "j", uuid4(), SyncResult(success=True, download_stats=PhaseStats(success=4))
+        )
+
+        assert subscriptions.update.call_args.args[1] == {"change_rate": 4.0}

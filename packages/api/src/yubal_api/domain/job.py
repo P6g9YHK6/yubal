@@ -35,6 +35,10 @@ class Job(BaseModel):
     max_items: int | None = None
     subscription_id: UUID | None = None
     source: JobSource = JobSource.MANUAL
+    # Queue ordering hints, see services/job_priority.py
+    first_sync: bool = False
+    change_rate: float | None = None
+    waiting_since: datetime | None = None
     status: JobStatus = JobStatus.PENDING
     progress: float = 0.0
     content_info: ContentInfo | None = None
