@@ -78,6 +78,20 @@ class TestJobPriority:
 
         assert job_priority(liked, NOW) > job_priority(album, NOW)
 
+    def test_kind_still_counts_among_new_jobs(self) -> None:
+        old = NOW - timedelta(hours=100)
+        liked = _job(f"{PLAYLIST}LM", created_at=old)
+        artist = _job(
+            "https://music.youtube.com/channel/UC8yu6IvCtH_4AuVSmyLuw1Q",
+            created_at=old,
+        )
+        first = _job(f"{PLAYLIST}LM", first_sync=True)
+        album = _job(f"{PLAYLIST}OLAK5uy_x", first_sync=True)
+
+        assert job_priority(liked, NOW).tier == Tier.NEW
+        assert job_priority(liked, NOW) > job_priority(artist, NOW)
+        assert job_priority(first, NOW) > job_priority(album, NOW)
+
     def test_learned_rate_beats_kind(self) -> None:
         day = NOW - timedelta(hours=24)
         busy = _job(f"{PLAYLIST}PLbusy", waiting_since=day, change_rate=20)
@@ -101,7 +115,12 @@ class TestJobPriority:
 
 class TestSubscriptionPriority:
     def test_never_synced_first(self) -> None:
-        never = MagicMock(url=f"{PLAYLIST}PLx", last_synced_at=None, change_rate=None)
+        never = MagicMock(
+            url=f"{PLAYLIST}PLx",
+            created_at=NOW,
+            last_synced_at=None,
+            change_rate=None,
+        )
         synced = MagicMock(
             url=f"{PLAYLIST}LM",
             last_synced_at=NOW - timedelta(days=30),
@@ -109,3 +128,19 @@ class TestSubscriptionPriority:
         )
 
         assert subscription_priority(never, NOW) > subscription_priority(synced, NOW)
+
+    def test_kind_still_counts_among_never_synced(self) -> None:
+        liked = MagicMock(
+            url=f"{PLAYLIST}LM",
+            created_at=NOW - timedelta(hours=1),
+            last_synced_at=None,
+            change_rate=None,
+        )
+        album = MagicMock(
+            url=f"{PLAYLIST}OLAK5uy_x",
+            created_at=NOW - timedelta(hours=1),
+            last_synced_at=None,
+            change_rate=None,
+        )
+
+        assert subscription_priority(liked, NOW) > subscription_priority(album, NOW)

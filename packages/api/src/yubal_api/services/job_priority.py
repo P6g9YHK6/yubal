@@ -5,7 +5,9 @@ then whatever most likely has new songs waiting: how many new tracks a
 subscription brought per sync (learned, see next_rate) times the hours since
 its last sync. That score keeps growing while a job waits, and a job pending
 for more than STARVED_AFTER is moved up with the new ones, so nothing waits
-forever behind a stream of busier subscriptions.
+forever behind a stream of busier subscriptions. Within the new tier the same
+score still decides, so Liked Music doesn't fall back to plain FIFO behind a
+backlog of artists.
 """
 
 from datetime import UTC, datetime, timedelta
@@ -101,21 +103,16 @@ def _score(url: str, rate: float | None, since: datetime, now: datetime) -> floa
 def job_priority(job: Job, now: datetime) -> Priority:
     if job.source == JobSource.MANUAL:
         return Priority(Tier.MANUAL, 0.0)
-    if job.first_sync or _as_utc(now) - _as_utc(job.created_at) > STARVED_AFTER:
-        return Priority(Tier.NEW, 0.0)
     since = job.waiting_since or job.created_at
-    return Priority(Tier.SCORED, _score(job.url, job.change_rate, since, now))
+    score = _score(job.url, job.change_rate, since, now)
+    if job.first_sync or _as_utc(now) - _as_utc(job.created_at) > STARVED_AFTER:
+        return Priority(Tier.NEW, score)
+    return Priority(Tier.SCORED, score)
 
 
 def subscription_priority(subscription: Subscription, now: datetime) -> Priority:
+    since = subscription.last_synced_at or subscription.created_at
+    score = _score(subscription.url, subscription.change_rate, since, now)
     if subscription.last_synced_at is None:
-        return Priority(Tier.NEW, 0.0)
-    return Priority(
-        Tier.SCORED,
-        _score(
-            subscription.url,
-            subscription.change_rate,
-            subscription.last_synced_at,
-            now,
-        ),
-    )
+        return Priority(Tier.NEW, score)
+    return Priority(Tier.SCORED, score)

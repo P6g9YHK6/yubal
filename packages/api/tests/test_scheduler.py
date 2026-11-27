@@ -22,6 +22,7 @@ def _subscription(
         url=url,
         id=uuid4(),
         max_items=None,
+        created_at=datetime.now(UTC),
         last_synced_at=last_synced_at,
         change_rate=change_rate,
     )
